@@ -1,0 +1,190 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import {
+  blankWeek,
+  seedCategories,
+  seedShops,
+  seedTechs,
+  seedWeeks,
+  uniqueTechId,
+  type Category,
+  type Shop,
+  type Tech,
+  type WeekLog,
+  type DayReport,
+} from "@/lib/board/model";
+
+type BoardState = {
+  shops: Shop[];
+  categories: Category[];
+  techs: Tech[];
+  weeks: WeekLog[];
+  dayReports: DayReport[];
+  lens: string;
+  viewer: string;
+  sampleCrew: boolean;
+  setLens: (lens: string) => void;
+  setViewer: (viewer: string) => void;
+  updateTech: (id: string, patch: Partial<Pick<Tech, "name" | "role" | "email">>) => void;
+  updateShop: (id: string, patch: Partial<Pick<Shop, "name" | "address">>) => void;
+  addTech: (name: string, role: string, shopId: string) => string;
+  removeTech: (id: string) => void;
+  updateCategory: (id: string, patch: Partial<Pick<Category, "name" | "hint">>) => void;
+  upsertWeek: (entry: WeekLog) => void;
+  upsertDayReport: (entry: DayReport) => void;
+  startWeek: (techId: string, weekStart: string) => void;
+  restoreSample: () => void;
+};
+
+const freshSample = () => ({
+  shops: seedShops.map((shop) => ({ ...shop })),
+  categories: seedCategories.map((category) => ({ ...category })),
+  techs: seedTechs.map((tech) => ({ ...tech })),
+  weeks: seedWeeks.map((week) => ({ ...week, scores: { ...week.scores } })),
+  dayReports: [],
+  sampleCrew: true,
+});
+
+export const useBoard = create<BoardState>()(
+  persist(
+    (set, get) => ({
+      ...freshSample(),
+      lens: "owner",
+      viewer: "owner",
+      setLens: (lens) => set({ lens, viewer: "owner" }),
+      setViewer: (viewer) => {
+        const person = get().techs.find((tech) => tech.id === viewer);
+        if (!person) {
+          set({ viewer: "owner", lens: "owner" });
+          return;
+        }
+        set({
+          viewer: person.id,
+          lens: person.kind === "manager" ? "owner" : "self",
+        });
+      },
+      updateTech: (id, patch) =>
+        set((state) => ({
+          sampleCrew: false,
+          techs: state.techs.map((tech) => (tech.id === id ? { ...tech, ...patch } : tech)),
+        })),
+      updateShop: (id, patch) =>
+        set((state) => ({
+          sampleCrew: false,
+          shops: state.shops.map((shop) => (shop.id === id ? { ...shop, ...patch } : shop)),
+        })),
+      addTech: (name, role, shopId) => {
+        const id = uniqueTechId(get().techs, name);
+        set((state) => ({
+          sampleCrew: false,
+          techs: [
+            ...state.techs,
+            {
+              id,
+              name: name.trim(),
+              role: role.trim() || "Technician",
+              email: "",
+              kind: "technician",
+              shopId,
+            },
+          ],
+        }));
+        return id;
+      },
+      removeTech: (id) =>
+        set((state) => ({
+          sampleCrew: false,
+          techs: state.techs.filter((tech) => tech.id !== id),
+          weeks: state.weeks.filter((week) => week.techId !== id),
+        })),
+      updateCategory: (id, patch) =>
+        set((state) => ({
+          categories: state.categories.map((category) =>
+            category.id === id ? { ...category, ...patch } : category,
+          ),
+        })),
+      upsertWeek: (entry) =>
+        set((state) => {
+          const index = state.weeks.findIndex(
+            (week) => week.techId === entry.techId && week.weekStart === entry.weekStart,
+          );
+          const weeks = state.weeks.slice();
+          if (index >= 0) weeks[index] = entry;
+          else weeks.push(entry);
+          return { weeks };
+        }),
+      upsertDayReport: (entry) =>
+        set((state) => {
+          const index = state.dayReports.findIndex(
+            (report) => report.shopId === entry.shopId && report.date === entry.date,
+          );
+          const dayReports = state.dayReports.slice();
+          if (index >= 0) dayReports[index] = entry;
+          else dayReports.push(entry);
+          return { dayReports, sampleCrew: false };
+        }),
+      startWeek: (techId, weekStart) => {
+        const state = get();
+        const person = state.techs.find((tech) => tech.id === techId);
+        const previous =
+          state.weeks
+            .filter((week) => week.techId === techId && week.weekStart < weekStart)
+            .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+            .at(-1) ?? null;
+        get().upsertWeek(
+          blankWeek(
+            techId,
+            weekStart,
+            state.categories
+              .filter((category) => category.kind === (person?.kind ?? "technician"))
+              .map((category) => category.id),
+            previous,
+          ),
+        );
+      },
+      restoreSample: () => set({ ...freshSample(), lens: "owner" }),
+    }),
+    {
+      name: "onward-board-v6",
+      skipHydration: true,
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const known = new Map(seedShops.map((shop) => [shop.id, shop.address]));
+        useBoard.setState({
+          techs: state.techs.map((tech) => ({
+            ...tech,
+            name:
+              tech.id === "dillon" || tech.name === "Dillon Hurst"
+                ? "Dillon Horst"
+                : tech.id === "kevin" || tech.name === "Kevin"
+                  ? "Kevin Nguyen"
+                  : tech.name,
+            role: tech.role === "Shop manager" ? "General Manager" : tech.role,
+            email: tech.email ?? "",
+          })),
+          shops: state.shops.map((shop) => ({
+            ...shop,
+            address: shop.address || known.get(shop.id) || "",
+          })),
+          categories: seedCategories,
+          viewer: state.viewer || "owner",
+          lens:
+            state.techs.find((tech) => tech.id === state.viewer)?.kind === "manager"
+              ? "owner"
+              : state.lens,
+          dayReports: state.dayReports ?? [],
+        });
+      },
+      partialize: (state) => ({
+        shops: state.shops,
+        categories: state.categories,
+        techs: state.techs,
+        weeks: state.weeks,
+        dayReports: state.dayReports,
+        lens: state.lens,
+        viewer: state.viewer,
+        sampleCrew: state.sampleCrew,
+      }),
+    },
+  ),
+);
