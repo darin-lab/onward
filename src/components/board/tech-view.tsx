@@ -14,6 +14,7 @@ import {
   formatHours,
   formatMoney,
   formatRecord,
+  isOwnerViewer,
   managerRanks,
   levelWord,
   nextWeekToLog,
@@ -51,7 +52,6 @@ export function TechView({ tech }: { tech: Tech }) {
   }, [reviewing]);
   const writing = canReview(viewer, tech, techs) && (tech.kind !== "manager" || reviewing);
   const visible = canViewReview(viewer, tech, techs);
-  const asSelf = viewer === tech.id;
 
   return (
     <div className="rise">
@@ -65,11 +65,11 @@ export function TechView({ tech }: { tech: Tech }) {
           End of Day Report
         </Link>
       ) : null}
-      {viewer === "owner" ? <EmailField tech={tech} /> : null}
+      {isOwnerViewer(viewer) ? <EmailField tech={tech} /> : null}
 
       {visible ? (
       <>
-      {active || (tech.kind === "manager" && asSelf) ? (
+      {active ? (
         <>
           {active ? (
           <WeekSwitcher
@@ -96,8 +96,6 @@ export function TechView({ tech }: { tech: Tech }) {
               <ManagerNotes week={active} writing={writing} />
               {writing ? null : <ManagerArcs list={list} week={active} />}
             </>
-          ) : asSelf ? (
-            <ManagerSample />
           ) : null}
           {tech.kind === "technician" && active && !writing ? (
             <>
@@ -106,8 +104,6 @@ export function TechView({ tech }: { tech: Tech }) {
             </>
           ) : null}
         </>
-      ) : tech.kind === "manager" && asSelf ? (
-        <ManagerSample />
       ) : null}
       </>
       ) : (
@@ -128,7 +124,7 @@ export function TechView({ tech }: { tech: Tech }) {
           }}
         />
       ) : null}
-      {tech.kind === "manager" && viewer === "owner" && !reviewing ? (
+      {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing ? (
         <Button
           className="mt-10 w-full text-base"
           onClick={() => {
@@ -317,55 +313,6 @@ function WeekSwitcher({
       >
         <ChevronRight className="size-5" />
       </button>
-    </div>
-  );
-}
-
-function ManagerSample() {
-  return (
-    <div className="mt-6 space-y-6">
-      <p className="text-sm text-muted">
-        A sample week, so you can see the layout. The real numbers replace this once they are
-        entered.
-      </p>
-      <Card>
-        <div>
-          <p className="text-sm text-muted">Total sales</p>
-          <p className="mt-1 font-display text-3xl font-semibold tabular-nums">$42,680</p>
-        </div>
-        <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5">
-          {[
-            ["Sell through percentage", "64%"],
-            ["Average repair order", "$418"],
-            ["Hours per repair order", "2.4"],
-            ["Recommendation per car", "$1,800"],
-            ["Sales per billed hour", "$186"],
-            ["Gross profit", "$24,150"],
-          ].map(([label, value]) => (
-            <li key={label}>
-              <p className="text-sm text-muted">{label}</p>
-              <p className="mt-1 font-display text-2xl font-semibold tabular-nums">{value}</p>
-            </li>
-          ))}
-        </ul>
-      </Card>
-      <Card>
-        <h2 className="text-2xl">Habits</h2>
-        <p className="mt-2 text-sm text-muted">Second to the numbers.</p>
-        <ul className="mt-5 space-y-4">
-          {[
-            ["Clear Communication", "Strong"],
-            ["Kept the shop moving", "Steady"],
-            ["Being a Team Player", "Strong"],
-            ["Kept the shop safe", "Practicing"],
-          ].map(([name, mark]) => (
-            <li key={name} className="flex items-baseline justify-between gap-3">
-              <p className="text-ink">{name}</p>
-              <p className="text-sm text-honey">{mark}</p>
-            </li>
-          ))}
-        </ul>
-      </Card>
     </div>
   );
 }

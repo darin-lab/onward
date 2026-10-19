@@ -1,4 +1,5 @@
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
+import { isOwnerEmail } from "@/lib/board/owners";
 
 export type PersonKind = "manager" | "technician";
 
@@ -106,8 +107,12 @@ export function peopleInLens(techs: Tech[], lens: string) {
   return techs.filter((person) => person.kind === "technician" && person.shopId === lens);
 }
 
+export function isOwnerViewer(viewer: string) {
+  return viewer === "owner" || isOwnerEmail(viewer);
+}
+
 export function canReview(viewer: string, person: Tech, techs: Tech[]) {
-  if (person.kind === "manager") return viewer === "owner";
+  if (person.kind === "manager") return isOwnerViewer(viewer);
   const manager = techs.find(
     (item) => item.kind === "manager" && item.shopId === person.shopId,
   );
@@ -116,7 +121,7 @@ export function canReview(viewer: string, person: Tech, techs: Tech[]) {
 
 export function canViewReview(viewer: string, person: Tech, techs: Tech[]) {
   if (person.kind === "technician") return true;
-  return viewer === "owner" || viewer === person.id;
+  return isOwnerViewer(viewer) || viewer === person.id;
 }
 
 export function hoursLabel(kind: PersonKind) {

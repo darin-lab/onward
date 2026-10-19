@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { DAY_FIELDS, type DayFieldKey } from "@/lib/board/model";
+import { mailDayReport } from "@/lib/board/mail-report.functions";
 import { useBoard } from "@/lib/board/store";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
@@ -150,6 +151,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   }
 
   const submitted = Boolean(saved?.submitted);
+  const [mailNote, setMailNote] = useState("");
   const best = BEST_MONTH[shopId];
 
   return (
@@ -225,19 +227,34 @@ export function DayReportForm({ shopId }: { shopId: string }) {
       <Button
         className="mt-6 w-full text-base"
         onClick={() => {
-          upsertDayReport({
+          const report = {
             shopId,
             date,
             values: draft,
             notes,
             submitted: true,
-          });
+          };
+          upsertDayReport(report);
+          setMailNote("Sending the copy…");
+          void mailDayReport({
+            data: { shopId, shopName: shop?.name ?? shopId, date, values: draft, notes },
+          })
+            .then((result) => {
+              setMailNote(
+                result.ok
+                  ? "A copy was emailed to you, Arun, and the shop manager."
+                  : "The report is saved. Email is not set up on the server yet.",
+              );
+            })
+            .catch(() => {
+              setMailNote("The report is saved. The email could not be sent.");
+            });
         }}
       >
         Submit
       </Button>
       <p className="mt-3 text-sm text-muted">
-        {submitted ? "This report is submitted." : "Submit when the day is filled in."}
+        {mailNote || (submitted ? "This report is submitted." : "Submit when the day is filled in.")}
       </p>
     </div>
   );
