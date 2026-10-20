@@ -94,6 +94,7 @@ export function Roster() {
           const crewRecord = shopRecord(techs, weeks, tech.shopId);
           const standing = companyPoll(techs, weeks).find((row) => row.tech.id === tech.id);
           const billed = week?.billedHours;
+          const cardNote = tech.kind === "manager" ? weekShape(rows) : week?.practice || weekShape(rows);
           return (
             <li key={tech.id} className="rise" style={{ animationDelay: `${index * 50}ms` }}>
               <div className="flex h-full flex-col rounded-2xl bg-surface p-4 shadow-border">
@@ -141,10 +142,8 @@ export function Roster() {
                 {tech.kind === "manager" ? (
                   <ShopReviews shopId={tech.shopId} weeks={weeks} />
                 ) : null}
-                {week?.practice || weekShape(rows) ? (
-                  <p className="mt-3 line-clamp-3 text-sm text-muted">
-                    {week?.practice || weekShape(rows)}
-                  </p>
+                {cardNote ? (
+                  <p className="mt-3 line-clamp-3 text-sm text-muted">{cardNote}</p>
                 ) : null}
               </div>
             </li>
@@ -239,7 +238,7 @@ function SavedWeekLine({ techId }: { techId: string }) {
   const bits = [
     week.totalSales != null ? formatMoney(week.totalSales) : null,
     week.sellThrough != null ? `${formatHours(week.sellThrough)}% sell through` : null,
-    week.averageRepairOrder != null ? `${formatMoney(week.averageRepairOrder)} average` : null,
+    week.averageRepairOrder != null ? `${formatMoney(week.averageRepairOrder)} ARO` : null,
     week.hoursPerRepairOrder != null ? `${formatHours(week.hoursPerRepairOrder)} hours per order` : null,
   ].filter(Boolean);
   return (

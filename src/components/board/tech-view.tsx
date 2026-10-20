@@ -159,7 +159,7 @@ export function ManagerSnapshot({
       ) : null}
       {week?.averageRepairOrder != null ? (
         <p className="text-sm tabular-nums text-ink">
-          {formatMoney(week.averageRepairOrder)} average repair order
+          {formatMoney(week.averageRepairOrder)} ARO
         </p>
       ) : null}
     </div>
@@ -367,7 +367,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     },
     {
       id: "average-ro",
-      label: "Average repair order",
+      label: "ARO",
       value: week.averageRepairOrder,
       max: 20000,
       rank: ranks.averageRepairOrder,
@@ -503,7 +503,7 @@ function ManagerArcs({ list, week }: { list: WeekLog[]; week: WeekLog }) {
   }[] = [
     { key: "totalSales", title: "Total sales", format: formatMoney },
     { key: "sellThrough", title: "Sell through percentage", format: (value) => `${formatHours(value)}%` },
-    { key: "averageRepairOrder", title: "Average repair order", format: formatMoney },
+    { key: "averageRepairOrder", title: "ARO", format: formatMoney },
     { key: "hoursPerRepairOrder", title: "Hours per repair order", format: formatHours },
     { key: "recsPerVehicle", title: "Recommendation per car", format: formatMoney },
     { key: "salesPerBilledHour", title: "Sales per billed hour", format: formatMoney },
