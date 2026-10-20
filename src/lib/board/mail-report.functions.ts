@@ -16,6 +16,8 @@ type MailInput = {
   date: string;
   values: Partial<Record<DayFieldKey, string>>;
   notes?: Partial<Record<DayFieldKey, string>>;
+  wentWell?: string;
+  didNotGoWell?: string;
 };
 
 export const mailDayReport = createServerFn({ method: "POST" })
@@ -30,6 +32,8 @@ export const mailDayReport = createServerFn({ method: "POST" })
       date: data.date,
       values: data.values ?? {},
       notes: data.notes ?? {},
+      wentWell: typeof data.wentWell === "string" ? data.wentWell : "",
+      didNotGoWell: typeof data.didNotGoWell === "string" ? data.didNotGoWell : "",
     };
   })
   .handler(async ({ data }) => {
@@ -47,6 +51,7 @@ export const mailDayReport = createServerFn({ method: "POST" })
       const note = data.notes?.[field.key]?.trim();
       return note ? `${field.label}: ${value}\nHow will you grow that number tomorrow? ${note}` : `${field.label}: ${value}`;
     });
+    lines.push("", `What went well: ${data.wentWell?.trim() || "—"}`, `What did not go so well? ${data.didNotGoWell?.trim() || "—"}`);
     const nodemailer = await import("nodemailer");
     const transport = nodemailer.createTransport({
       host: "smtp.gmail.com",

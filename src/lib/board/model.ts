@@ -85,6 +85,8 @@ export type DayReport = {
   date: string;
   values: Partial<Record<DayFieldKey, string>>;
   notes?: Partial<Record<DayFieldKey, string>>;
+  wentWell?: string;
+  didNotGoWell?: string;
   submitted?: boolean;
 };
 

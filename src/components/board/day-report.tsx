@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { DAY_FIELDS, type DayFieldKey } from "@/lib/board/model";
+import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { mailDayReport } from "@/lib/board/mail-report.functions";
 import { useBoard } from "@/lib/board/store";
 import { Button, Card, fieldClass } from "@/components/board/ui";
@@ -142,17 +143,40 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const saved = reports.find((report) => report.shopId === shopId && report.date === date);
   const [draft, setDraft] = useState<Partial<Record<DayFieldKey, string>>>(saved?.values ?? {});
   const [notes, setNotes] = useState<Partial<Record<DayFieldKey, string>>>(saved?.notes ?? {});
+  const [wentWell, setWentWell] = useState(saved?.wentWell ?? "");
+  const [didNotGoWell, setDidNotGoWell] = useState(saved?.didNotGoWell ?? "");
   const [draftDate, setDraftDate] = useState(date);
 
   if (draftDate !== date) {
     setDraftDate(date);
     setDraft(saved?.values ?? {});
     setNotes(saved?.notes ?? {});
+    setWentWell(saved?.wentWell ?? "");
+    setDidNotGoWell(saved?.didNotGoWell ?? "");
   }
 
   const submitted = Boolean(saved?.submitted);
   const [mailNote, setMailNote] = useState("");
   const best = BEST_MONTH[shopId];
+
+  useEffect(() => {
+    if (submitted) return;
+    let cancel = false;
+    void pullShopRange({ data: { shopId, start: date, end: date } }).then((result) => {
+      if (cancel || !result.ok) return;
+      setDraft((current) => {
+        const next = { ...current };
+        for (const [key, value] of Object.entries(result.fields)) {
+          const field = key as DayFieldKey;
+          if (!next[field]?.trim()) next[field] = value;
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [shopId, date, submitted]);
 
   return (
     <div>
@@ -222,6 +246,24 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             );
           })}
         </ul>
+        <label className="mt-4 block text-sm text-ink" htmlFor="went-well">
+          What went well
+        </label>
+        <textarea
+          id="went-well"
+          value={wentWell}
+          onChange={(event) => setWentWell(event.target.value)}
+          className={cn(fieldClass, "mt-1.5 min-h-24 w-full py-2")}
+        />
+        <label className="mt-4 block text-sm text-ink" htmlFor="did-not">
+          What did not go so well?
+        </label>
+        <textarea
+          id="did-not"
+          value={didNotGoWell}
+          onChange={(event) => setDidNotGoWell(event.target.value)}
+          className={cn(fieldClass, "mt-1.5 min-h-24 w-full py-2")}
+        />
       </Card>
 
       <Button
@@ -232,12 +274,22 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             date,
             values: draft,
             notes,
+            wentWell,
+            didNotGoWell,
             submitted: true,
           };
           upsertDayReport(report);
           setMailNote("Sending the copy…");
           void mailDayReport({
-            data: { shopId, shopName: shop?.name ?? shopId, date, values: draft, notes },
+            data: {
+              shopId,
+              shopName: shop?.name ?? shopId,
+              date,
+              values: draft,
+              notes,
+              wentWell,
+              didNotGoWell,
+            },
           })
             .then((result) => {
               setMailNote(

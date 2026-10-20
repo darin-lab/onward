@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { HabitChart, HoursChart } from "@/components/board/charts";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
+import { pullShopRange } from "@/lib/board/dashboard.functions";
 import {
   LEVELS,
   canReview,
@@ -19,6 +20,7 @@ import {
   levelWord,
   nextWeekToLog,
   peerRanks,
+  priorWeekISO,
   relationLabel,
   shiftWord,
   shopRecord,
@@ -30,6 +32,13 @@ import {
 } from "@/lib/board/model";
 import { CompanyPoll } from "@/components/board/poll";
 import { useBoard } from "@/lib/board/store";
+
+function thursdayOf(monday: string) {
+  const [year, month, day] = monday.split("-").map(Number);
+  const date = new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + 3);
+  return date.toISOString().slice(0, 10);
+}
 
 export function TechView({ tech }: { tech: Tech }) {
   const weeks = useBoard((state) => state.weeks);
@@ -51,6 +60,53 @@ export function TechView({ tech }: { tech: Tech }) {
   }, [reviewing]);
   const writing = canReview(viewer, tech, techs) && (tech.kind !== "manager" || reviewing);
   const visible = canViewReview(viewer, tech, techs);
+
+  useEffect(() => {
+    if (tech.kind !== "manager" || !visible) return;
+    const weekStart = active?.weekStart ?? priorWeekISO();
+    let cancel = false;
+    const end = thursdayOf(weekStart);
+    void pullShopRange({ data: { shopId: tech.shopId, start: weekStart, end } }).then((result) => {
+      if (cancel || !result.ok) return;
+      const state = useBoard.getState();
+      if (!state.weeks.some((week) => week.techId === tech.id && week.weekStart === weekStart)) {
+        state.startWeek(tech.id, weekStart);
+      }
+      const current = useBoard.getState().weeks.find(
+        (week) => week.techId === tech.id && week.weekStart === weekStart,
+      );
+      if (!current || current.submitted) return;
+      const week = result.week;
+      const next = { ...current };
+      if (next.totalSales == null && week.totalSales != null) next.totalSales = week.totalSales;
+      if (next.sellThrough == null && week.sellThrough != null) next.sellThrough = week.sellThrough;
+      if (next.averageRepairOrder == null && week.averageRepairOrder != null) {
+        next.averageRepairOrder = week.averageRepairOrder;
+      }
+      if (next.hoursPerRepairOrder == null && week.hoursPerRepairOrder != null) {
+        next.hoursPerRepairOrder = week.hoursPerRepairOrder;
+      }
+      if (next.recsPerVehicle == null && week.recsPerVehicle != null) next.recsPerVehicle = week.recsPerVehicle;
+      if (next.salesPerBilledHour == null && week.salesPerBilledHour != null) {
+        next.salesPerBilledHour = week.salesPerBilledHour;
+      }
+      if (next.billedHours == null && week.billedHours != null) next.billedHours = week.billedHours;
+      if (next.cars == null && week.cars != null) next.cars = week.cars;
+      const same =
+        next.totalSales === current.totalSales &&
+        next.sellThrough === current.sellThrough &&
+        next.averageRepairOrder === current.averageRepairOrder &&
+        next.hoursPerRepairOrder === current.hoursPerRepairOrder &&
+        next.recsPerVehicle === current.recsPerVehicle &&
+        next.salesPerBilledHour === current.salesPerBilledHour &&
+        next.billedHours === current.billedHours &&
+        next.cars === current.cars;
+      if (!same) state.upsertWeek(next);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [tech.id, tech.kind, tech.shopId, active?.weekStart, visible]);
 
   return (
     <div className="rise">
