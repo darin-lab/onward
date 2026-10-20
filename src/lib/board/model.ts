@@ -262,9 +262,7 @@ export function weekShape(rows: { name: string; score: number }[]) {
   if (rows.length === 0) return "";
   const top = rows.reduce((best, row) => (row.score > best.score ? row : best));
   const low = rows.reduce((best, row) => (row.score < best.score ? row : best));
-  if (top.score === low.score) {
-    return `Even across the habits — ${levelWord(top.score).toLowerCase()} in each one.`;
-  }
+  if (top.score === low.score) return "";
   const leaders = rows.filter((row) => row.score === top.score);
   const lead =
     leaders.length === 1

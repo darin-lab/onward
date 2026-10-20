@@ -26,9 +26,9 @@ async function ensureAssignedPins() {
   const sql = await getSql();
   for (const [personId, pin] of Object.entries(assignedPins)) {
     await sql.query(
-      `insert into staff_pins (person_id, pin_hash) values ($1, $2)
-       on conflict (person_id) do nothing`,
-      [personId, digest(key, pin)],
+      `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
+       on conflict (person_id) do update set pin_text = coalesce(staff_pins.pin_text, excluded.pin_text)`,
+      [personId, digest(key, pin), pin],
     );
   }
 }
@@ -145,8 +145,10 @@ export const pinAssignments = createServerFn({ method: "GET" }).handler(async ()
   await ensureAssignedPins();
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
-  const rows = await sql.query<{ person_id: string }>("select person_id from staff_pins");
-  return rows.map((row) => row.person_id);
+  const rows = await sql.query<{ person_id: string; pin_text: string | null }>(
+    "select person_id, pin_text from staff_pins",
+  );
+  return rows.map((row) => ({ personId: row.person_id, pin: row.pin_text ?? "" }));
 });
 
 export const setPersonPin = createServerFn({ method: "POST" })
@@ -177,9 +179,9 @@ export const setPersonPin = createServerFn({ method: "POST" })
       return { ok: false as const, reason: "That PIN is already used." };
     }
     await sql.query(
-      `insert into staff_pins (person_id, pin_hash) values ($1, $2)
-       on conflict (person_id) do update set pin_hash = excluded.pin_hash`,
-      [data.personId, hash],
+      `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
+       on conflict (person_id) do update set pin_hash = excluded.pin_hash, pin_text = excluded.pin_text`,
+      [data.personId, hash, data.pin],
     );
     return { ok: true as const };
   });

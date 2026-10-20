@@ -141,7 +141,7 @@ export function Roster() {
                 {tech.kind === "manager" ? (
                   <ShopReviews shopId={tech.shopId} weeks={weeks} />
                 ) : null}
-                {week?.practice || rows.length > 0 ? (
+                {week?.practice || weekShape(rows) ? (
                   <p className="mt-3 line-clamp-3 text-sm text-muted">
                     {week?.practice || weekShape(rows)}
                   </p>
@@ -161,7 +161,7 @@ export function Roster() {
       {isOwnerViewer(viewer) ? (
         <details className="mt-10">
           <summary className="min-h-11 cursor-pointer text-sm text-muted">
-            Rename shops, habits, and people. Set PINs.
+            App editor
           </summary>
           <div className="mt-4 space-y-4">
             <PinList />
@@ -252,7 +252,7 @@ function SavedWeekLine({ techId }: { techId: string }) {
 
 function PinList() {
   const techs = useBoard((state) => state.techs);
-  const [saved, setSaved] = useState<string[]>([]);
+  const [pins, setPins] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
   const people = [
     { id: "darin", name: "Darin Dinis" },
@@ -262,8 +262,12 @@ function PinList() {
 
   useEffect(() => {
     void pinAssignments()
-      .then((ids) => setSaved(ids))
-      .catch(() => setSaved([]));
+      .then((rows) => {
+        const next: Record<string, string> = {};
+        for (const row of rows) next[row.personId] = row.pin;
+        setPins(next);
+      })
+      .catch(() => setPins({}));
   }, []);
 
   return (
@@ -274,9 +278,9 @@ function PinList() {
           key={person.id}
           personId={person.id}
           name={person.name}
-          hasPin={saved.includes(person.id)}
-          onSaved={() => {
-            setSaved((current) => (current.includes(person.id) ? current : [...current, person.id]));
+          currentPin={pins[person.id] ?? ""}
+          onSaved={(pin) => {
+            setPins((current) => ({ ...current, [person.id]: pin }));
             setNote(`${person.name} saved.`);
           }}
           onFailed={(reason) => setNote(reason)}
@@ -290,17 +294,18 @@ function PinList() {
 function PinRow({
   personId,
   name,
-  hasPin,
+  currentPin,
   onSaved,
   onFailed,
 }: {
   personId: string;
   name: string;
-  hasPin: boolean;
-  onSaved: () => void;
+  currentPin: string;
+  onSaved: (pin: string) => void;
   onFailed: (reason: string) => void;
 }) {
-  const [pin, setPin] = useState("");
+  const [pin, setPin] = useState(currentPin);
+  if (pin === "" && currentPin) setPin(currentPin);
   return (
     <form
       className="flex items-center gap-3"
@@ -311,14 +316,12 @@ function PinRow({
             onFailed(result.reason);
             return;
           }
-          setPin("");
-          onSaved();
+          onSaved(pin);
         });
       }}
     >
       <label className="min-w-0 flex-1 text-sm text-ink" htmlFor={`pin-${personId}`}>
         {name}
-        {hasPin ? <span className="ml-2 text-muted">saved</span> : null}
       </label>
       <input
         id={`pin-${personId}`}
@@ -330,7 +333,7 @@ function PinRow({
         placeholder="4 digits"
         className="min-h-11 w-28 rounded-md bg-raised px-3 text-ink shadow-border"
       />
-      <Button type="submit" tone="quiet" disabled={pin.length !== 4}>
+      <Button type="submit" tone="quiet" disabled={pin.length !== 4 || pin === currentPin}>
         Save
       </Button>
     </form>
@@ -343,8 +346,6 @@ function CrewTools() {
     <div className="space-y-4">
       {lens === "owner" ? null : <AddTech shopId={lens} />}
       <CategoryEditor />
-      <ShopNames />
-      <Restore />
     </div>
   );
 }
@@ -455,62 +456,5 @@ function CategoryEditor() {
         </div>
       ))}
     </Card>
-  );
-}
-
-function ShopNames() {
-  const lens = useBoard((state) => state.lens);
-  const shops = useBoard((state) => state.shops);
-  const updateShop = useBoard((state) => state.updateShop);
-  if (lens !== "owner") return null;
-  return (
-    <Card>
-      <h3 className="text-xl">Shop names</h3>
-      <ul className="mt-4 space-y-3">
-        {shops.map((shop) => (
-          <li key={shop.id} className="space-y-2">
-            <label className="sr-only" htmlFor={`shop-${shop.id}`}>
-              Shop name
-            </label>
-            <input
-              id={`shop-${shop.id}`}
-              value={shop.name}
-              onChange={(event) => updateShop(shop.id, { name: event.target.value })}
-              className={fieldClass}
-            />
-            <label className="sr-only" htmlFor={`addr-${shop.id}`}>
-              Address
-            </label>
-            <input
-              id={`addr-${shop.id}`}
-              value={shop.address}
-              onChange={(event) => updateShop(shop.id, { address: event.target.value })}
-              className={fieldClass}
-            />
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-function Restore() {
-  const restoreSample = useBoard((state) => state.restoreSample);
-  return (
-    <button
-      type="button"
-      className="min-h-11 text-sm text-muted underline-offset-4 hover:underline"
-      onClick={() => {
-        if (
-          window.confirm(
-            "Restore the sample shops? Edits saved in this browser will be replaced.",
-          )
-        ) {
-          restoreSample();
-        }
-      }}
-    >
-      Restore the sample shops
-    </button>
   );
 }

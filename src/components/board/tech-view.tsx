@@ -990,7 +990,7 @@ function Habits({
         Starting, Practicing, Steady, Strong, or Showing others. This is where the habit
         is this week, not a score against anyone else.
       </p>
-      {marked.length > 0 ? <p className="mt-3 text-ink">{weekShape(marked)}</p> : null}
+      {weekShape(marked) ? <p className="mt-3 text-ink">{weekShape(marked)}</p> : null}
       <ul className="mt-5 space-y-5">
         {rows.map((row) => (
           <li key={row.id}>
