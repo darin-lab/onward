@@ -2,16 +2,6 @@ import type { Category, PersonKind, Shop, Tech, WeekLog } from "@/lib/board/mode
 
 export const seedShops: Shop[] = [
   {
-    id: "san-ramon",
-    name: "San Ramon",
-    address: "12831 Alcosta Blvd B, San Ramon, CA 94583",
-  },
-  {
-    id: "castro-valley",
-    name: "Castro Valley",
-    address: "2769 Castro Valley Blvd, Castro Valley, CA 94546",
-  },
-  {
     id: "fremont",
     name: "Fremont",
     address: "40931 Albrae St, Fremont, CA 94538",
@@ -22,9 +12,19 @@ export const seedShops: Shop[] = [
     address: "335 E McGlincy Ln #3, Campbell, CA 95008",
   },
   {
+    id: "san-ramon",
+    name: "San Ramon",
+    address: "12831 Alcosta Blvd B, San Ramon, CA 94583",
+  },
+  {
     id: "san-jose",
     name: "San Jose",
     address: "297 E Taylor St, San Jose, CA 95112",
+  },
+  {
+    id: "castro-valley",
+    name: "Castro Valley",
+    address: "2769 Castro Valley Blvd, Castro Valley, CA 94546",
   },
 ];
 

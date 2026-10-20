@@ -24,7 +24,6 @@ import {
   shopRecord,
   weekRangeLabel,
   weekRelation,
-  weekShape,
   weeksFor,
   type Tech,
   type WeekLog,
@@ -67,48 +66,46 @@ export function TechView({ tech }: { tech: Tech }) {
       ) : null}
       {isOwnerViewer(viewer) ? <EmailField tech={tech} /> : null}
 
-      {visible ? (
-      <>
       {active ? (
-        <>
-          {active ? (
-          <WeekSwitcher
-            week={active}
-            hasPrevious={Boolean(previous)}
-            hasNext={Boolean(next)}
-            onPrevious={() => previous && setPicked(previous.weekStart)}
-            onNext={() => next && setPicked(next.weekStart)}
-          />
-          ) : null}
-          {tech.kind === "technician" && active ? (
-            <>
-              <WeekWork list={list} week={active} writing={writing} />
-              <TechNotes week={active} />
-            </>
-          ) : active ? (
-            <>
-              <ManagerWeek week={active} writing={writing} />
-              {writing ? (
-                <HabitMarks week={active} kind={tech.kind} />
-              ) : (
-                <Habits list={list} week={active} kind={tech.kind} />
-              )}
-              <ManagerNotes week={active} writing={writing} />
-              {writing ? null : <ManagerArcs list={list} week={active} />}
-            </>
-          ) : null}
-          {tech.kind === "technician" && active && !writing ? (
-            <>
-              <Habits list={list} week={active} kind={tech.kind} />
-              <History list={list} week={active} kind={tech.kind} />
-            </>
-          ) : null}
-        </>
+        <WeekSwitcher
+          week={active}
+          hasPrevious={Boolean(previous)}
+          hasNext={Boolean(next)}
+          onPrevious={() => previous && setPicked(previous.weekStart)}
+          onNext={() => next && setPicked(next.weekStart)}
+        />
       ) : null}
-      </>
-      ) : (
-        <PrivateReview tech={tech} />
-      )}
+
+      {tech.kind === "technician" && active ? (
+        <WeekWork list={list} week={active} writing={writing} detail={visible} />
+      ) : null}
+
+      {visible && active ? (
+        tech.kind === "technician" ? (
+          <>
+            <TechNotes week={active} />
+            {writing ? null : (
+              <>
+                <Habits list={list} week={active} kind={tech.kind} />
+                <History list={list} week={active} kind={tech.kind} />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <ManagerWeek week={active} writing={writing} />
+            {writing ? (
+              <HabitMarks week={active} kind={tech.kind} />
+            ) : (
+              <Habits list={list} week={active} kind={tech.kind} />
+            )}
+            <ManagerNotes week={active} writing={writing} />
+            {writing ? null : <ManagerArcs list={list} week={active} />}
+          </>
+        )
+      ) : null}
+
+      {!visible && tech.kind === "manager" ? <PrivateReview tech={tech} /> : null}
 
       {tech.kind === "manager" ? <CrewGlance shopId={tech.shopId} /> : null}
       {tech.kind === "technician" && !writing ? <CompanyPoll highlightId={tech.id} /> : null}
@@ -214,10 +211,8 @@ function PrivateReview({ tech }: { tech: Tech }) {
 }
 
 function CrewGlance({ shopId }: { shopId: string }) {
-  const viewer = useBoard((state) => state.viewer);
   const techs = useBoard((state) => state.techs);
   const weeks = useBoard((state) => state.weeks);
-  const shops = useBoard((state) => state.shops);
   const crew = techs.filter((person) => person.shopId === shopId && person.kind === "technician");
   const poll = companyPoll(techs, weeks);
   return (
@@ -227,27 +222,45 @@ function CrewGlance({ shopId }: { shopId: string }) {
         {crew.map((person) => {
           const week = featuredWeek(weeks, person.id);
           const standing = poll.find((row) => row.tech.id === person.id);
-          const showNote = canViewReview(viewer, person, techs) && week?.practice;
           return (
             <li key={person.id}>
               <Link
                 to="/t/$techId"
                 params={{ techId: person.id }}
-                className="flex items-baseline justify-between gap-3"
+                className="block"
               >
-                <span className="text-ink">
-                  {person.name}{" "}
-                  <span className="text-sm tabular-nums text-muted">
-                    {formatRecord(standing?.record ?? { wins: 0, losses: 0, draws: 0, played: 0 })}
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink">
+                    {person.name}{" "}
+                    <span className="text-sm tabular-nums text-muted">
+                      {formatRecord(standing?.record ?? { wins: 0, losses: 0, draws: 0, played: 0 })}
+                    </span>
+                  </span>
+                  <span className="tabular-nums text-muted">
+                    {week?.billedHours != null ? `${formatHours(week.billedHours)} billed` : "—"}
                   </span>
                 </span>
-                <span className="tabular-nums text-muted">
-                  {week?.billedHours != null ? `${formatHours(week.billedHours)} billed` : "—"}
+                <span className="mt-1 grid grid-cols-3 gap-2 text-sm">
+                  <span>
+                    <span className="block text-muted">Cars</span>
+                    <span className="tabular-nums text-ink">
+                      {week?.cars == null ? "—" : formatHours(week.cars)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-muted">Recs / RO</span>
+                    <span className="tabular-nums text-ink">
+                      {week?.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-muted">Efficiency</span>
+                    <span className="tabular-nums text-ink">
+                      {week?.efficiency == null ? "—" : `${formatHours(week.efficiency)}%`}
+                    </span>
+                  </span>
                 </span>
               </Link>
-              {showNote ? (
-                <p className="mt-1 line-clamp-2 text-sm text-muted">{week.practice}</p>
-              ) : null}
             </li>
           );
         })}
@@ -536,10 +549,12 @@ function WeekWork({
   list,
   week,
   writing,
+  detail = true,
 }: {
   list: WeekLog[];
   week: WeekLog;
   writing: boolean;
+  detail?: boolean;
 }) {
   const techs = useBoard((state) => state.techs);
   const weeks = useBoard((state) => state.weeks);
@@ -571,6 +586,7 @@ function WeekWork({
         </p>
       )}
       <RankLine rank={ranks?.billedHours} total={ranks?.total} />
+      {detail ? (
       <MissNote
         id="billed-why"
         show={week.billedHours != null && week.billedHours < 40}
@@ -578,6 +594,7 @@ function WeekWork({
         value={week.billedNote ?? ""}
         onChange={(billedNote) => upsertWeek({ ...week, billedNote })}
       />
+      ) : null}
       <div className="mt-5 grid grid-cols-2 gap-4">
         <div>
           <div className="flex items-baseline justify-between gap-2">
@@ -603,6 +620,7 @@ function WeekWork({
             </p>
           )}
           <RankLine rank={ranks?.cars} total={ranks?.total} />
+          {detail ? (
           <MissNote
             id="cars-why"
             show={week.cars != null && week.cars < 14}
@@ -610,6 +628,7 @@ function WeekWork({
             value={week.carsNote ?? ""}
             onChange={(carsNote) => upsertWeek({ ...week, carsNote })}
           />
+          ) : null}
         </div>
         <div>
           <div className="flex items-baseline justify-between gap-2">
@@ -635,6 +654,7 @@ function WeekWork({
             </p>
           )}
           <RankLine rank={ranks?.recsPerVehicle} total={ranks?.total} />
+          {detail ? (
           <MissNote
             id="recs-why"
             show={week.recsPerVehicle != null && week.recsPerVehicle < 2500}
@@ -642,6 +662,7 @@ function WeekWork({
             value={week.recsNote ?? ""}
             onChange={(recsNote) => upsertWeek({ ...week, recsNote })}
           />
+          ) : null}
         </div>
         <div>
           <div className="flex items-baseline justify-between gap-2">
@@ -667,6 +688,7 @@ function WeekWork({
             </p>
           )}
           <RankLine rank={ranks?.efficiency} total={ranks?.total} />
+          {detail ? (
           <MissNote
             id="eff-why"
             show={week.efficiency != null && (week.efficiency < 100 || week.efficiency > 150)}
@@ -674,6 +696,7 @@ function WeekWork({
             value={week.efficiencyNote ?? ""}
             onChange={(efficiencyNote) => upsertWeek({ ...week, efficiencyNote })}
           />
+          ) : null}
         </div>
       </div>
       {ranks == null ? (
@@ -681,7 +704,7 @@ function WeekWork({
           Rank shows under each number once every technician's week is in.
         </p>
       ) : null}
-      <Boomerangs week={week} writing={writing} />
+      {detail ? <Boomerangs week={week} writing={writing} /> : null}
     </Card>
     {writing ? null : (
       <Card className="mt-6">
@@ -1010,10 +1033,6 @@ function Habits({
     score: week.scores[category.id],
     before: previous?.scores[category.id],
   }));
-  const marked = rows.filter((row) => row.score != null) as {
-    name: string;
-    score: number;
-  }[];
 
   return (
     <Card className="mt-6">
@@ -1022,7 +1041,6 @@ function Habits({
         Starting, Practicing, Steady, Strong, or Showing others. This is where the habit
         is this week, not a score against anyone else.
       </p>
-      {weekShape(marked) ? <p className="mt-3 text-ink">{weekShape(marked)}</p> : null}
       <ul className="mt-5 space-y-5">
         {rows.map((row) => (
           <li key={row.id}>

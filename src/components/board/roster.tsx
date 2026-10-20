@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
-  categoriesFor,
   companyPoll,
   featuredWeek,
   formatHours,
@@ -11,11 +10,8 @@ import {
   isOwnerViewer,
   peopleInLens,
   priorWeekISO,
-  recordOf,
   shopRecord,
   weekRangeLabel,
-  weekShape,
-  weeksFor,
   type WeekLog,
 } from "@/lib/board/model";
 import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
@@ -28,7 +24,6 @@ export function Roster() {
   const techs = useBoard((state) => state.techs);
   const shops = useBoard((state) => state.shops);
   const storedWeeks = useBoard((state) => state.weeks);
-  const categories = useBoard((state) => state.categories);
   const lens = useBoard((state) => state.lens);
   const viewer = useBoard((state) => state.viewer);
   const prior = priorWeekISO();
@@ -40,6 +35,14 @@ export function Roster() {
   if (looking?.kind === "technician") {
     return <Navigate to="/t/$techId" params={{ techId: looking.id }} />;
   }
+
+  const shopOrder = ["fremont", "campbell", "san-ramon", "san-jose", "castro-valley"];
+  const ordered =
+    lens === "owner"
+      ? [...visible].sort(
+          (a, b) => shopOrder.indexOf(a.shopId) - shopOrder.indexOf(b.shopId),
+        )
+      : visible;
 
   return (
     <div>
@@ -83,18 +86,12 @@ export function Roster() {
         </>
       )}
       <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-        {visible.map((tech, index) => {
+        {ordered.map((tech, index) => {
           const week = featuredWeek(weeks, tech.id);
-          const habitSet = categoriesFor(categories, tech.kind);
-          const rows = habitSet.flatMap((category) => {
-            const score = week?.scores[category.id];
-            return score == null ? [] : [{ name: category.name, score }];
-          });
           const home = shops.find((item) => item.id === tech.shopId);
           const crewRecord = shopRecord(techs, weeks, tech.shopId);
           const standing = companyPoll(techs, weeks).find((row) => row.tech.id === tech.id);
           const billed = week?.billedHours;
-          const cardNote = tech.kind === "manager" ? weekShape(rows) : week?.practice || weekShape(rows);
           return (
             <li key={tech.id} className="rise" style={{ animationDelay: `${index * 50}ms` }}>
               <div className="flex h-full flex-col rounded-2xl bg-surface p-4 shadow-border">
@@ -139,11 +136,27 @@ export function Roster() {
                   <ManagerSnapshot tech={tech} weeks={weeks} />
                 ) : null}
                 </Link>
-                {tech.kind === "manager" ? (
-                  <ShopReviews shopId={tech.shopId} weeks={weeks} />
-                ) : null}
-                {cardNote ? (
-                  <p className="mt-3 line-clamp-3 text-sm text-muted">{cardNote}</p>
+                {tech.kind === "technician" && week ? (
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                    <div>
+                      <dt className="text-muted">Cars</dt>
+                      <dd className="tabular-nums text-ink">
+                        {week.cars == null ? "—" : formatHours(week.cars)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Recs / RO</dt>
+                      <dd className="tabular-nums text-ink">
+                        {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Efficiency</dt>
+                      <dd className="tabular-nums text-ink">
+                        {week.efficiency == null ? "—" : `${formatHours(week.efficiency)}%`}
+                      </dd>
+                    </div>
+                  </dl>
                 ) : null}
               </div>
             </li>
@@ -186,48 +199,6 @@ function MonthSales({ weeks, managerId }: { weeks: WeekLog[]; managerId: string 
       <span className="text-muted">{format(now, "MMMM")} sales </span>
       <span className="font-display text-xl font-semibold tabular-nums">{formatMoney(total)}</span>
     </p>
-  );
-}
-
-function ShopReviews({ shopId, weeks }: { shopId: string; weeks: WeekLog[] }) {
-  const techs = useBoard((state) => state.techs);
-  const crew = techs
-    .filter((person) => person.kind === "technician" && person.shopId === shopId)
-    .map((person) => ({
-      person,
-      week: featuredWeek(weeks, person.id),
-      record: recordOf(weeksFor(weeks, person.id)),
-    }))
-    .filter((row) => row.week != null);
-  if (crew.length === 0) return null;
-  return (
-    <ul className="mt-4 space-y-3 border-t border-line pt-3">
-      {crew.map((row) => (
-        <li key={row.person.id}>
-          <Link to="/t/$techId" params={{ techId: row.person.id }} className="block">
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="text-ink">
-                {row.person.name}{" "}
-                <span className="text-sm tabular-nums text-muted">{formatRecord(row.record)}</span>
-              </span>
-              <span className="text-xs text-muted">
-                {row.week ? weekRangeLabel(row.week.weekStart) : ""}
-              </span>
-            </span>
-            <span className="mt-1 block text-sm tabular-nums text-muted">
-              {[
-                row.week?.billedHours != null ? `${formatHours(row.week.billedHours)} billed` : null,
-                row.week?.cars != null ? `${formatHours(row.week.cars)} cars` : null,
-                row.week?.recsPerVehicle != null ? formatMoney(row.week.recsPerVehicle) : null,
-                row.week?.efficiency != null ? `${formatHours(row.week.efficiency)}%` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "Review started"}
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
