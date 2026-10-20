@@ -204,10 +204,11 @@ function PersonHeading({ tech }: { tech: Tech }) {
 }
 
 function PrivateReview({ tech }: { tech: Tech }) {
-  if (tech.kind === "technician") return null;
   return (
     <p className="mt-6 text-muted">
-      This weekly review is only for {tech.name} and the owner.
+      {tech.kind === "technician"
+        ? "This review is only for this technician. Sign in with your PIN."
+        : `This weekly review is only for ${tech.name} and the owner.`}
     </p>
   );
 }

@@ -50,8 +50,8 @@ export const useBoard = create<BoardState>()(
     (set, get) => ({
       ...freshSample(),
       lens: "owner",
-      viewer: "owner",
-      setLens: (lens) => set({ lens, viewer: "owner" }),
+      viewer: "guest",
+      setLens: (lens) => set({ lens }),
       setViewer: (viewer) => {
         const person = get().techs.find((tech) => tech.id === viewer);
         if (!person) {
@@ -167,11 +167,8 @@ export const useBoard = create<BoardState>()(
             address: shop.address || known.get(shop.id) || "",
           })),
           categories: seedCategories,
-          viewer: state.viewer || "owner",
-          lens:
-            state.techs.find((tech) => tech.id === state.viewer)?.kind === "manager"
-              ? "owner"
-              : state.lens,
+          viewer: "guest",
+          lens: "owner",
           dayReports: state.dayReports ?? [],
         });
       },

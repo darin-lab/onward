@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
@@ -18,6 +18,7 @@ import {
   weeksFor,
   type WeekLog,
 } from "@/lib/board/model";
+import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
 import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
 import { ManagerSnapshot } from "@/components/board/tech-view";
@@ -160,9 +161,10 @@ export function Roster() {
       {isOwnerViewer(viewer) ? (
         <details className="mt-10">
           <summary className="min-h-11 cursor-pointer text-sm text-muted">
-            Rename shops, habits, and people
+            Rename shops, habits, and people. Set PINs.
           </summary>
           <div className="mt-4 space-y-4">
+            <PinList />
             <CrewTools />
           </div>
         </details>
@@ -245,6 +247,93 @@ function SavedWeekLine({ techId }: { techId: string }) {
       Week of {weekRangeLabel(week.weekStart)}
       {bits.length > 0 ? ` · ${bits.join(" · ")}` : ""}
     </p>
+  );
+}
+
+function PinList() {
+  const techs = useBoard((state) => state.techs);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [note, setNote] = useState("");
+  const people = [
+    { id: "darin", name: "Darin Dinis" },
+    { id: "arun", name: "Arun" },
+    ...techs.map((person) => ({ id: person.id, name: person.name })),
+  ];
+
+  useEffect(() => {
+    void pinAssignments()
+      .then((ids) => setSaved(ids))
+      .catch(() => setSaved([]));
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted">PINs</p>
+      {people.map((person) => (
+        <PinRow
+          key={person.id}
+          personId={person.id}
+          name={person.name}
+          hasPin={saved.includes(person.id)}
+          onSaved={() => {
+            setSaved((current) => (current.includes(person.id) ? current : [...current, person.id]));
+            setNote(`${person.name} saved.`);
+          }}
+          onFailed={(reason) => setNote(reason)}
+        />
+      ))}
+      {note ? <p className="text-sm text-muted">{note}</p> : null}
+    </div>
+  );
+}
+
+function PinRow({
+  personId,
+  name,
+  hasPin,
+  onSaved,
+  onFailed,
+}: {
+  personId: string;
+  name: string;
+  hasPin: boolean;
+  onSaved: () => void;
+  onFailed: (reason: string) => void;
+}) {
+  const [pin, setPin] = useState("");
+  return (
+    <form
+      className="flex items-center gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void setPersonPin({ data: { personId, pin } }).then((result) => {
+          if (!result.ok) {
+            onFailed(result.reason);
+            return;
+          }
+          setPin("");
+          onSaved();
+        });
+      }}
+    >
+      <label className="min-w-0 flex-1 text-sm text-ink" htmlFor={`pin-${personId}`}>
+        {name}
+        {hasPin ? <span className="ml-2 text-muted">saved</span> : null}
+      </label>
+      <input
+        id={`pin-${personId}`}
+        inputMode="numeric"
+        autoComplete="off"
+        maxLength={4}
+        value={pin}
+        onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+        placeholder="4 digits"
+        className="min-h-11 w-28 rounded-md bg-raised px-3 text-ink shadow-border"
+      />
+      <Button type="submit" tone="quiet" disabled={pin.length !== 4}>
+        Save
+      </Button>
+    </form>
   );
 }
 

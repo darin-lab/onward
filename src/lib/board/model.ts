@@ -120,8 +120,12 @@ export function canReview(viewer: string, person: Tech, techs: Tech[]) {
 }
 
 export function canViewReview(viewer: string, person: Tech, techs: Tech[]) {
-  if (person.kind === "technician") return true;
-  return isOwnerViewer(viewer) || viewer === person.id;
+  if (isOwnerViewer(viewer) || viewer === person.id) return true;
+  if (person.kind !== "technician") return false;
+  const manager = techs.find(
+    (item) => item.kind === "manager" && item.shopId === person.shopId,
+  );
+  return viewer === manager?.id;
 }
 
 export function hoursLabel(kind: PersonKind) {
