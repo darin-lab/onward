@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const assignedPins: Record<string, string> = {
-  darin: "4816",
+  darin: "0585",
   arun: "2957",
   jon: "6148",
   david: "3702",
@@ -25,10 +25,21 @@ async function ensureAssignedPins() {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   for (const [personId, pin] of Object.entries(assignedPins)) {
+    const hash = digest(key, pin);
+    if (personId === "darin") {
+      await sql.query(
+        `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
+         on conflict (person_id) do update
+         set pin_hash = excluded.pin_hash, pin_text = excluded.pin_text
+         where staff_pins.pin_text is null or staff_pins.pin_text = '4816'`,
+        [personId, hash, pin],
+      );
+      continue;
+    }
     await sql.query(
       `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
        on conflict (person_id) do update set pin_text = coalesce(staff_pins.pin_text, excluded.pin_text)`,
-      [personId, digest(key, pin), pin],
+      [personId, hash, pin],
     );
   }
 }

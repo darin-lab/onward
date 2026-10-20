@@ -339,6 +339,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     max: number;
     rank?: number;
     text: string;
+    goal?: string;
+    met?: (n: number) => boolean;
     commit: (value: number | null) => void;
   }[] = [
     {
@@ -348,6 +350,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 1000000,
       rank: ranks.totalSales,
       text: week.totalSales == null ? "—" : formatMoney(week.totalSales),
+      goal: "Goal $32,000",
+      met: (n) => n >= 32000,
       commit: (totalSales) => upsertWeek({ ...week, totalSales }),
     },
     {
@@ -357,6 +361,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 100,
       rank: ranks.sellThrough,
       text: week.sellThrough == null ? "—" : `${formatHours(week.sellThrough)}%`,
+      goal: "Goal 25–30%",
+      met: (n) => n >= 25 && n <= 30,
       commit: (sellThrough) => upsertWeek({ ...week, sellThrough }),
     },
     {
@@ -366,6 +372,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 20000,
       rank: ranks.averageRepairOrder,
       text: week.averageRepairOrder == null ? "—" : formatMoney(week.averageRepairOrder),
+      goal: "Goal $1,200",
+      met: (n) => n >= 1200,
       commit: (averageRepairOrder) => upsertWeek({ ...week, averageRepairOrder }),
     },
     {
@@ -375,6 +383,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 40,
       rank: ranks.hoursPerRepairOrder,
       text: week.hoursPerRepairOrder == null ? "—" : formatHours(week.hoursPerRepairOrder),
+      goal: "Goal 3",
+      met: (n) => n >= 3,
       commit: (hoursPerRepairOrder) => upsertWeek({ ...week, hoursPerRepairOrder }),
     },
     {
@@ -384,6 +394,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 20000,
       rank: ranks.recsPerVehicle,
       text: week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle),
+      goal: "Goal $2,800",
+      met: (n) => n >= 2800,
       commit: (recsPerVehicle) => upsertWeek({ ...week, recsPerVehicle }),
     },
     {
@@ -393,6 +405,8 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 2000,
       rank: ranks.salesPerBilledHour,
       text: week.salesPerBilledHour == null ? "—" : formatMoney(week.salesPerBilledHour),
+      goal: "Goal $400",
+      met: (n) => n >= 400,
       commit: (salesPerBilledHour) => upsertWeek({ ...week, salesPerBilledHour }),
     },
     {
@@ -411,7 +425,10 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     <Card className="mt-6">
       {sales ? (
         <div>
-          <p className="text-sm text-muted">{sales.label}</p>
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm text-muted">{sales.label}</p>
+            {sales.goal ? <p className="shrink-0 text-xs text-muted">{sales.goal}</p> : null}
+          </div>
           {writing ? (
             <DecimalField
               key={`${week.weekStart}-${sales.id}`}
@@ -420,9 +437,15 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
               value={sales.value}
               max={sales.max}
               onCommit={sales.commit}
+              met={sales.met}
             />
           ) : (
-            <p className="mt-1 font-display text-3xl font-semibold tabular-nums">{sales.text}</p>
+            <p
+              className="mt-1 font-display text-3xl font-semibold tabular-nums"
+              style={{ color: sales.met ? goalColor(sales.value, sales.met) : undefined }}
+            >
+              {sales.text}
+            </p>
           )}
           <RankLine rank={sales.rank} total={ranks.total} />
         </div>
@@ -430,7 +453,10 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5">
         {rest.map((field) => (
           <li key={field.id}>
-            <p className="text-sm text-muted">{field.label}</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-sm text-muted">{field.label}</p>
+              {field.goal ? <p className="shrink-0 text-xs text-muted">{field.goal}</p> : null}
+            </div>
             {writing ? (
               <DecimalField
                 key={`${week.weekStart}-${field.id}`}
@@ -439,9 +465,15 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
                 value={field.value}
                 max={field.max}
                 onCommit={field.commit}
+                met={field.met}
               />
             ) : (
-              <p className="mt-1 font-display text-2xl font-semibold tabular-nums">{field.text}</p>
+              <p
+                className="mt-1 font-display text-2xl font-semibold tabular-nums"
+                style={{ color: field.met ? goalColor(field.value, field.met) : undefined }}
+              >
+                {field.text}
+              </p>
             )}
             <RankLine rank={field.rank} total={ranks.total} />
           </li>
@@ -1115,7 +1147,17 @@ function DecimalField({
         id={id}
         inputMode="decimal"
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          const nextText = event.target.value;
+          setText(nextText);
+          if (nextText.trim() === "") {
+            onCommit(null);
+            return;
+          }
+          const parsed = Number(nextText);
+          if (Number.isNaN(parsed)) return;
+          onCommit(Math.min(max, Math.max(0, Math.round(parsed * 100) / 100)));
+        }}
         onBlur={() => {
           if (text.trim() === "") {
             onCommit(null);
