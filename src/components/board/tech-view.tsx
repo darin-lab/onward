@@ -138,7 +138,7 @@ export function TechView({ tech }: { tech: Tech }) {
       {visible && active ? (
         tech.kind === "technician" ? (
           <>
-            <TechNotes week={active} />
+            <TechNotes week={active} writing={writing} />
             {writing ? null : (
               <>
                 <Habits list={list} week={active} kind={tech.kind} />
@@ -897,34 +897,47 @@ function RankLine({ rank, total }: { rank?: number; total?: number }) {
   );
 }
 
-function TechNotes({ week }: { week: WeekLog }) {
+function TechNotes({ week, writing }: { week: WeekLog; writing: boolean }) {
   const upsertWeek = useBoard((state) => state.upsertWeek);
+  if (!writing && !week.working && !week.practice) return null;
   return (
     <div className="mt-6 space-y-3">
-      <Card>
-        <label className="block text-sm text-honey" htmlFor="went-well">
-          What went well
-        </label>
-        <textarea
-          id="went-well"
-          value={week.working}
-          onChange={(event) => upsertWeek({ ...week, working: event.target.value })}
-          placeholder="Name something real from the week."
-          className={cn(fieldClass, "mt-3 min-h-28 py-3")}
-        />
-      </Card>
-      <Card>
-        <label className="block text-sm text-honey" htmlFor="work-on">
-          What we need to work on
-        </label>
-        <textarea
-          id="work-on"
-          value={week.practice}
-          onChange={(event) => upsertWeek({ ...week, practice: event.target.value })}
-          placeholder="The habit to practice next."
-          className={cn(fieldClass, "mt-3 min-h-28 py-3")}
-        />
-      </Card>
+      {writing || week.working ? (
+        <Card>
+          <label className="block text-sm text-honey" htmlFor="went-well">
+            What went well
+          </label>
+          {writing ? (
+            <textarea
+              id="went-well"
+              value={week.working}
+              onChange={(event) => upsertWeek({ ...week, working: event.target.value })}
+              placeholder="Name something real from the week."
+              className={cn(fieldClass, "mt-3 min-h-28 py-3")}
+            />
+          ) : (
+            <p className="mt-3 text-lg leading-snug text-ink">{week.working}</p>
+          )}
+        </Card>
+      ) : null}
+      {writing || week.practice ? (
+        <Card>
+          <label className="block text-sm text-honey" htmlFor="work-on">
+            What we need to work on
+          </label>
+          {writing ? (
+            <textarea
+              id="work-on"
+              value={week.practice}
+              onChange={(event) => upsertWeek({ ...week, practice: event.target.value })}
+              placeholder="The habit to practice next."
+              className={cn(fieldClass, "mt-3 min-h-28 py-3")}
+            />
+          ) : (
+            <p className="mt-3 text-lg leading-snug text-ink">{week.practice}</p>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }
