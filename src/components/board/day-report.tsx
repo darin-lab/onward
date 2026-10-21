@@ -112,9 +112,9 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
   },
 };
 
-const GOALS: Partial<Record<DayFieldKey, { label: string; low: number }>> = {
+const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: number }>> = {
   productivity: { label: "85% – 90%", low: 85 },
-  efficiency: { label: "100% – 150%", low: 100 },
+  efficiency: { label: "100% – 150%", low: 100, high: 150 },
   proficiency: { label: "100%", low: 100 },
   elr: { label: "$250.00", low: 250 },
   spbh: { label: "$400.00", low: 400 },
@@ -122,17 +122,25 @@ const GOALS: Partial<Record<DayFieldKey, { label: string; low: number }>> = {
   hoursPerDay: { label: "20.00", low: 20 },
 };
 
+const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
+
 function readNumber(raw: string | undefined) {
   if (!raw?.trim()) return null;
   const value = Number(raw.replace(/[$,%\s,]/g, ""));
   return Number.isFinite(value) ? value : null;
 }
 
+function asPercent(part: number | null, whole: number | null) {
+  if (part == null || whole == null || whole === 0) return "";
+  return `${(Math.round((part / whole) * 1000) / 10).toFixed(1)}%`;
+}
+
 function belowGoal(key: DayFieldKey, raw: string | undefined) {
   const goal = GOALS[key];
   const value = readNumber(raw);
   if (!goal || value == null) return false;
-  return value < goal.low;
+  if (value < goal.low) return true;
+  return goal.high != null && value > goal.high;
 }
 
 export function DayReportForm({ shopId }: { shopId: string }) {
@@ -158,6 +166,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const submitted = Boolean(saved?.submitted);
   const [mailNote, setMailNote] = useState("");
   const best = BEST_MONTH[shopId];
+  const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
+  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.workHours));
+  const shown: Partial<Record<DayFieldKey, string>> = { ...draft, productivity, efficiency };
 
   useEffect(() => {
     if (submitted) return;
@@ -208,7 +219,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               <span className="w-28" />
             </li>
           {DAY_FIELDS.map((field) => {
-            const low = belowGoal(field.key, draft[field.key]);
+            const value = shown[field.key] ?? "";
+            const low = belowGoal(field.key, value);
+            const entered = ENTERED.includes(field.key);
+            const tone =
+              GOALS[field.key] && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
             return (
               <li key={field.key} className="py-1.5">
                 <div className="flex items-center gap-3">
@@ -221,15 +236,25 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                   <span className="w-36 shrink-0 text-right text-sm tabular-nums text-muted">
                     {best?.values[field.key] ?? ""}
                   </span>
-                  <input
-                    id={field.key}
-                    inputMode="decimal"
-                    value={draft[field.key] ?? ""}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, [field.key]: event.target.value }))
-                    }
-                    className={cn(fieldClass, "min-h-9 w-28 shrink-0 px-2 text-right tabular-nums")}
-                  />
+                  {entered ? (
+                    <input
+                      id={field.key}
+                      inputMode="decimal"
+                      value={draft[field.key] ?? ""}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, [field.key]: event.target.value }))
+                      }
+                      className={cn(fieldClass, "min-h-9 w-28 shrink-0 px-2 text-right tabular-nums")}
+                      style={{ color: tone }}
+                    />
+                  ) : (
+                    <span
+                      className="flex min-h-9 w-28 shrink-0 items-center justify-end px-2 text-right text-sm tabular-nums text-ink"
+                      style={{ color: tone }}
+                    >
+                      {value || "—"}
+                    </span>
+                  )}
                 </div>
                 {low ? (
                   <textarea
@@ -272,7 +297,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
           const report = {
             shopId,
             date,
-            values: draft,
+            values: shown,
             notes,
             wentWell,
             didNotGoWell,
@@ -285,7 +310,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               shopId,
               shopName: shop?.name ?? shopId,
               date,
-              values: draft,
+              values: shown,
               notes,
               wentWell,
               didNotGoWell,
