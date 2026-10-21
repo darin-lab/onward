@@ -779,7 +779,7 @@ function MissNote({
       id={id}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      placeholder="Why it wasn't hit"
+      placeholder="What can we do to grow this number"
       className={cn(fieldClass, "mt-2 min-h-20 py-3")}
     />
   );
@@ -905,7 +905,6 @@ function TechNotes({ week }: { week: WeekLog }) {
         <label className="block text-sm text-honey" htmlFor="went-well">
           What went well
         </label>
-        <p className="mt-1 text-sm text-muted">For the technician.</p>
         <textarea
           id="went-well"
           value={week.working}
@@ -918,7 +917,6 @@ function TechNotes({ week }: { week: WeekLog }) {
         <label className="block text-sm text-honey" htmlFor="work-on">
           What we need to work on
         </label>
-        <p className="mt-1 text-sm text-muted">For the technician. One next step, not a verdict.</p>
         <textarea
           id="work-on"
           value={week.practice}
