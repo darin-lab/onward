@@ -177,6 +177,7 @@ export function Roster() {
           </summary>
           <div className="mt-4 space-y-4">
             <PinList />
+            <EmailList />
             <CrewTools />
           </div>
         </details>
@@ -258,6 +259,40 @@ function PinList() {
       ))}
       {note ? <p className="text-sm text-muted">{note}</p> : null}
     </div>
+  );
+}
+
+function EmailList() {
+  const techs = useBoard((state) => state.techs);
+  const shops = useBoard((state) => state.shops);
+  const updateTech = useBoard((state) => state.updateTech);
+  return (
+    <Card>
+      <h3 className="text-xl">Email</h3>
+      <ul className="mt-4 space-y-3">
+        {techs.map((person) => {
+          const shop = shops.find((item) => item.id === person.shopId);
+          return (
+            <li key={person.id} className="flex items-center gap-3">
+              <label className="min-w-0 flex-1 text-sm text-ink" htmlFor={`email-${person.id}`}>
+                {person.name}
+                <span className="block text-xs text-muted">{shop?.name}</span>
+              </label>
+              <input
+                id={`email-${person.id}`}
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                value={person.email ?? ""}
+                onChange={(event) => updateTech(person.id, { email: event.target.value.trim() })}
+                placeholder="name@gmail.com"
+                className="min-h-11 w-56 rounded-md bg-raised px-3 text-ink shadow-border"
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 

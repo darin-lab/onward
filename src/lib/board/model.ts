@@ -114,7 +114,8 @@ export function isOwnerViewer(viewer: string) {
 }
 
 export function canReview(viewer: string, person: Tech, techs: Tech[]) {
-  if (person.kind === "manager") return isOwnerViewer(viewer);
+  if (isOwnerViewer(viewer)) return true;
+  if (person.kind === "manager") return false;
   const manager = techs.find(
     (item) => item.kind === "manager" && item.shopId === person.shopId,
   );

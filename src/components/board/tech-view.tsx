@@ -120,7 +120,6 @@ export function TechView({ tech }: { tech: Tech }) {
           End of Day Report
         </Link>
       ) : null}
-      {isOwnerViewer(viewer) ? <EmailField tech={tech} /> : null}
 
       {active ? (
         <WeekSwitcher
@@ -321,27 +320,6 @@ function CrewGlance({ shopId }: { shopId: string }) {
           );
         })}
       </ul>
-    </Card>
-  );
-}
-
-function EmailField({ tech }: { tech: Tech }) {
-  const updateTech = useBoard((state) => state.updateTech);
-  return (
-    <Card className="mt-6">
-      <label className="block text-sm text-muted" htmlFor="tech-email">
-        Gmail
-      </label>
-      <input
-        id="tech-email"
-        type="email"
-        inputMode="email"
-        autoComplete="off"
-        value={tech.email ?? ""}
-        onChange={(event) => updateTech(tech.id, { email: event.target.value.trim() })}
-        placeholder="name@gmail.com"
-        className={cn(fieldClass, "mt-2")}
-      />
     </Card>
   );
 }

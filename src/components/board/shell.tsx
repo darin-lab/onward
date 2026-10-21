@@ -97,7 +97,7 @@ function PinGate({
     <div className="mx-auto flex min-h-[70vh] max-w-sm flex-col items-center justify-center text-center">
       <Logo />
       <h1 className="mt-8 text-4xl text-ink">Driven Onward</h1>
-      <p className="mt-3 text-muted">Enter your PIN to open the board.</p>
+      <p className="mt-3 text-muted">Enter your PIN</p>
       {ready ? (
         <form
           className="mt-6 w-full"
