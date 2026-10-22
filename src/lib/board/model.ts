@@ -100,6 +100,25 @@ export type DayReport = {
   submitted?: boolean;
 };
 
+export type PhoneAnswer = {
+  personId: string;
+  name: string;
+  shopName: string;
+  text: string;
+  at: string;
+};
+
+export type PhoneCall = {
+  id: string;
+  managerId: string;
+  question: string;
+  audio: string;
+  audioName: string;
+  createdAt: string;
+  answers: PhoneAnswer[];
+  sample?: boolean;
+};
+
 export const LEVELS = [
   { score: 1, word: "Starting" },
   { score: 2, word: "Practicing" },

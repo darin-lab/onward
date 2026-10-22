@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { pinSignIn, pinSignOut, pinStatus } from "@/lib/board/pin.functions";
 import { useBoard } from "@/lib/board/store";
-import { fieldClass } from "@/components/board/ui";
+import { CallBell } from "@/components/board/phone-call";
 
 type Session = { personId: string; role: string; name: string };
 
@@ -35,19 +35,24 @@ export function Shell({ children }: { children: ReactNode }) {
                 <Logo />
               </Link>
               <div className="text-right">
-                <p className="text-sm text-ink">{session.name}</p>
-                <button
-                  type="button"
-                  className="text-xs text-muted underline-offset-4 hover:underline"
-                  onClick={() => {
-                    void pinSignOut().then(() => {
-                      applySession(null);
-                      setSession(null);
-                    });
-                  }}
-                >
-                  Sign out
-                </button>
+                <div className="flex items-center justify-end gap-3">
+                  <CallBell />
+                  <div>
+                    <p className="text-sm text-ink">{session.name}</p>
+                    <button
+                      type="button"
+                      className="text-xs text-muted underline-offset-4 hover:underline"
+                      onClick={() => {
+                        void pinSignOut().then(() => {
+                          applySession(null);
+                          setSession(null);
+                        });
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </div>
               </div>
             </header>
             {children}

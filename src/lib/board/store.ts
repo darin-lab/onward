@@ -12,6 +12,8 @@ import {
   type Tech,
   type WeekLog,
   type DayReport,
+  type PhoneAnswer,
+  type PhoneCall,
 } from "@/lib/board/model";
 
 type BoardState = {
@@ -20,6 +22,7 @@ type BoardState = {
   techs: Tech[];
   weeks: WeekLog[];
   dayReports: DayReport[];
+  calls: PhoneCall[];
   lens: string;
   viewer: string;
   sampleCrew: boolean;
@@ -32,6 +35,8 @@ type BoardState = {
   updateCategory: (id: string, patch: Partial<Pick<Category, "name" | "hint">>) => void;
   upsertWeek: (entry: WeekLog) => void;
   upsertDayReport: (entry: DayReport) => void;
+  addCall: (entry: PhoneCall) => void;
+  answerCall: (id: string, answer: PhoneAnswer) => void;
   startWeek: (techId: string, weekStart: string) => void;
   restoreSample: () => void;
 };
@@ -51,6 +56,7 @@ export const useBoard = create<BoardState>()(
       ...freshSample(),
       lens: "owner",
       viewer: "guest",
+      calls: [],
       setLens: (lens) => set({ lens }),
       setViewer: (viewer) => {
         const person = get().techs.find((tech) => tech.id === viewer);
@@ -123,6 +129,21 @@ export const useBoard = create<BoardState>()(
           else dayReports.push(entry);
           return { dayReports, sampleCrew: false };
         }),
+      addCall: (entry) =>
+        set((state) => ({
+          calls: [...(state.calls ?? []).filter((call) => call.id !== entry.id), entry],
+          sampleCrew: false,
+        })),
+      answerCall: (id, answer) =>
+        set((state) => ({
+          calls: (state.calls ?? []).map((call) => {
+            if (call.id !== id) return call;
+            const answers = call.answers.some((item) => item.personId === answer.personId)
+              ? call.answers
+              : [...call.answers, answer];
+            return { ...call, answers, audio: "" };
+          }),
+        })),
       startWeek: (techId, weekStart) => {
         const state = get();
         const person = state.techs.find((tech) => tech.id === techId);
@@ -170,6 +191,7 @@ export const useBoard = create<BoardState>()(
           viewer: "guest",
           lens: "owner",
           dayReports: state.dayReports ?? [],
+          calls: state.calls ?? [],
         });
       },
       partialize: (state) => ({
@@ -178,6 +200,7 @@ export const useBoard = create<BoardState>()(
         techs: state.techs,
         weeks: state.weeks,
         dayReports: state.dayReports,
+        calls: state.calls,
         lens: state.lens,
         viewer: state.viewer,
         sampleCrew: state.sampleCrew,

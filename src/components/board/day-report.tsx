@@ -4,6 +4,8 @@ import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { mailDayReport } from "@/lib/board/mail-report.functions";
 import { useBoard } from "@/lib/board/store";
+import { CallReview, pendingCalls } from "@/components/board/phone-call";
+import { isOwnerViewer } from "@/lib/board/model";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 
@@ -16,7 +18,7 @@ function todayISO() {
 
 const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFieldKey, string>> }> = {
   fremont: {
-    label: "October 2025",
+    label: "Oct. 25",
     values: {
       productivity: "73.9%",
       efficiency: "105.4%",
@@ -25,17 +27,17 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
       spbh: "$434.17",
       hpro: "3.2",
       hoursPerDay: "17.8",
-      billedHours: "284.0",
-      workHours: "259.0",
-      serviceHours: "269.5",
-      availableHours: "350.7",
-      laborSales: "$64,273.77",
-      totalSales: "$123,309.89",
-      carCount: "89",
+      billedHours: "15.8",
+      workHours: "14.4",
+      serviceHours: "15.0",
+      availableHours: "19.5",
+      laborSales: "$3,570.76",
+      totalSales: "$6,850.55",
+      carCount: "4.9",
     },
   },
   campbell: {
-    label: "April 2026",
+    label: "Apr. 26",
     values: {
       productivity: "80.1%",
       efficiency: "86.7%",
@@ -44,17 +46,17 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
       spbh: "$441.08",
       hpro: "3.0",
       hoursPerDay: "13.5",
-      billedHours: "216.4",
-      workHours: "249.5",
-      serviceHours: "249.6",
-      availableHours: "311.6",
-      laborSales: "$54,404.62",
-      totalSales: "$95,450.11",
-      carCount: "71",
+      billedHours: "12.0",
+      workHours: "13.9",
+      serviceHours: "13.9",
+      availableHours: "17.3",
+      laborSales: "$3,022.48",
+      totalSales: "$5,302.78",
+      carCount: "3.9",
     },
   },
   "san-ramon": {
-    label: "June 2025",
+    label: "Jun. 25",
     values: {
       productivity: "84.2%",
       efficiency: "115.1%",
@@ -63,17 +65,17 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
       spbh: "$320.24",
       hpro: "2.9",
       hoursPerDay: "21.1",
-      billedHours: "338.3",
-      workHours: "292.1",
-      serviceHours: "294.0",
-      availableHours: "347.1",
-      laborSales: "$67,288.47",
-      totalSales: "$108,327.54",
-      carCount: "117",
+      billedHours: "19.9",
+      workHours: "17.2",
+      serviceHours: "17.3",
+      availableHours: "20.4",
+      laborSales: "$3,958.15",
+      totalSales: "$6,372.21",
+      carCount: "6.9",
     },
   },
   "san-jose": {
-    label: "May 2026",
+    label: "May 26",
     values: {
       productivity: "72.1%",
       efficiency: "73.7%",
@@ -82,17 +84,17 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
       spbh: "$425.77",
       hpro: "3.4",
       hoursPerDay: "12.7",
-      billedHours: "203.8",
-      workHours: "213.7",
-      serviceHours: "276.4",
-      availableHours: "296.5",
-      laborSales: "$44,092.00",
-      totalSales: "$86,771.97",
-      carCount: "60",
+      billedHours: "12.7",
+      workHours: "13.4",
+      serviceHours: "17.3",
+      availableHours: "18.5",
+      laborSales: "$2,755.75",
+      totalSales: "$5,423.25",
+      carCount: "3.8",
     },
   },
   "castro-valley": {
-    label: "July 2026",
+    label: "Jul. 26",
     values: {
       productivity: "85.6%",
       efficiency: "85.2%",
@@ -101,13 +103,13 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
       spbh: "$360.13",
       hpro: "3.0",
       hoursPerDay: "10.5",
-      billedHours: "168.35",
-      workHours: "180.90",
-      serviceHours: "197.51",
-      availableHours: "211.38",
-      laborSales: "$36,112.79",
-      totalSales: "$60,627.52",
-      carCount: "56",
+      billedHours: "9.4",
+      workHours: "10.1",
+      serviceHours: "11.0",
+      availableHours: "11.7",
+      laborSales: "$2,006.27",
+      totalSales: "$3,368.20",
+      carCount: "3.1",
     },
   },
 };
@@ -157,6 +159,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     (state) => state.techs.find((person) => person.kind === "manager" && person.shopId === shopId)?.id,
   );
   const navigate = useNavigate();
+  const viewer = useBoard((state) => state.viewer);
+  const techs = useBoard((state) => state.techs);
+  const calls = useBoard((state) => state.calls ?? []);
   const [sending, setSending] = useState(false);
   const [date, setDate] = useState(todayISO);
   const saved = reports.find((report) => report.shopId === shopId && report.date === date);
@@ -208,6 +213,34 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     };
   }, [shopId, date, submitted]);
 
+  const person = techs.find((item) => item.id === viewer);
+  const queue = pendingCalls(calls, person?.id ?? viewer);
+  const waiting = queue[0];
+  const actor =
+    person ??
+    (waiting && import.meta.env.DEV && isOwnerViewer(viewer)
+      ? {
+          id: "darin",
+          name: "Darin Dinis",
+          role: "Owner",
+          kind: "manager" as const,
+          shopId: waiting.managerId ? techs.find((item) => item.id === waiting.managerId)?.shopId ?? shopId : shopId,
+          email: "",
+        }
+      : null);
+  if (waiting && actor && (person?.kind === "manager" || actor.role === "Owner")) {
+    return (
+      <CallReview
+        key={waiting.id}
+        call={waiting}
+        person={actor}
+        shopName={shop?.name ?? actor.shopId}
+        index={1}
+        total={queue.length}
+      />
+    );
+  }
+
   return (
     <div>
       <Link to="/" className="inline-flex min-h-11 items-center text-sm text-honey">
@@ -232,8 +265,8 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         <ul className="mt-2 divide-y divide-line">
             <li className="flex items-center justify-end gap-3 py-1.5">
               <span className="w-28 text-right text-xs text-muted">Goal</span>
-              <span className="w-36 text-right text-xs whitespace-nowrap text-muted">
-                {best ? `Best · ${best.label}` : ""}
+              <span className="w-36 text-right text-xs leading-snug text-muted">
+                {best ? `Best Month - ${best.label} (daily avg)` : ""}
               </span>
               <span className="w-28" />
             </li>

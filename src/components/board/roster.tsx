@@ -18,7 +18,9 @@ import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
 import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
 import { ManagerSnapshot } from "@/components/board/tech-view";
+import { BrickPhone, CallComposer } from "@/components/board/phone-call";
 import { Button, Card, fieldClass } from "@/components/board/ui";
+import { cn } from "@/lib/cn";
 
 export function Roster() {
   const techs = useBoard((state) => state.techs);
@@ -56,6 +58,7 @@ export function Roster() {
             Weekly feedback so you can see the progress and build on what is working.
           </p>
           <p className="mt-3 text-sm text-honey">Week of {weekRangeLabel(prior)}</p>
+          {isOwnerViewer(viewer) ? <OwnerTools /> : null}
         </>
       ) : (
         <>
@@ -169,18 +172,52 @@ export function Roster() {
       ) : null}
 
       <CompanyPoll weeks={weeks} />
+    </div>
+  );
+}
 
-      {isOwnerViewer(viewer) ? (
-        <details className="mt-10">
-          <summary className="min-h-11 cursor-pointer text-sm text-muted">
-            App editor
-          </summary>
-          <div className="mt-4 space-y-4">
-            <PinList />
-            <EmailList />
-            <CrewTools />
-          </div>
-        </details>
+function OwnerTools() {
+  const [open, setOpen] = useState<"call" | "pins" | "emails" | "habits" | null>(null);
+  const pick = (next: "call" | "pins" | "emails" | "habits") =>
+    setOpen((current) => (current === next ? null : next));
+  const tool =
+    "inline-flex min-h-12 items-center rounded-md bg-raised px-4 font-display text-sm tracking-wide text-ink uppercase italic shadow-border";
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => pick("call")} className={cn(tool, "gap-3 px-3", open === "call" && "text-honey")}>
+          <BrickPhone />
+          Call reflection
+        </button>
+        <button type="button" onClick={() => pick("pins")} className={cn(tool, open === "pins" && "text-honey")}>
+          Pin editor
+        </button>
+        <button type="button" onClick={() => pick("emails")} className={cn(tool, open === "emails" && "text-honey")}>
+          Emails
+        </button>
+        <button type="button" onClick={() => pick("habits")} className={cn(tool, open === "habits" && "text-honey")}>
+          Habits
+        </button>
+      </div>
+      {open === "call" ? (
+        <div className="mt-4">
+          <CallComposer />
+        </div>
+      ) : null}
+      {open === "pins" ? (
+        <Card className="mt-4">
+          <PinList />
+        </Card>
+      ) : null}
+      {open === "emails" ? (
+        <div className="mt-4">
+          <EmailList />
+        </div>
+      ) : null}
+      {open === "habits" ? (
+        <div className="mt-4">
+          <CategoryEditor />
+        </div>
       ) : null}
     </div>
   );
@@ -342,64 +379,6 @@ function PinRow({
         Save
       </Button>
     </form>
-  );
-}
-
-function CrewTools() {
-  const lens = useBoard((state) => state.lens);
-  return (
-    <div className="space-y-4">
-      {lens === "owner" ? null : <AddTech shopId={lens} />}
-      <CategoryEditor />
-    </div>
-  );
-}
-
-function AddTech({ shopId }: { shopId: string }) {
-  const addTech = useBoard((state) => state.addTech);
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-
-  return (
-    <Card>
-      <h3 className="text-xl">Add a technician</h3>
-      <form
-        className="mt-4 space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!name.trim()) return;
-          addTech(name, role, shopId);
-          setName("");
-          setRole("");
-        }}
-      >
-        <label className="block text-sm text-muted" htmlFor="new-name">
-          Name
-        </label>
-        <input
-          id="new-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className={fieldClass}
-          placeholder="Jordan Lee"
-          autoComplete="off"
-        />
-        <label className="block text-sm text-muted" htmlFor="new-role">
-          Role
-        </label>
-        <input
-          id="new-role"
-          value={role}
-          onChange={(event) => setRole(event.target.value)}
-          className={fieldClass}
-          placeholder="Service tech"
-          autoComplete="off"
-        />
-        <Button type="submit" disabled={!name.trim()}>
-          Add to this shop
-        </Button>
-      </form>
-    </Card>
   );
 }
 

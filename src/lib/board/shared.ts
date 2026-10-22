@@ -1,4 +1,5 @@
 import { loadBoard, saveBoard, type BoardSnapshot } from "@/lib/board/board.functions";
+import { sampleReflections } from "@/components/board/phone-call";
 import { seedCategories } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
 
@@ -10,6 +11,7 @@ function snapshot(): BoardSnapshot {
     techs: state.techs,
     weeks: state.weeks,
     dayReports: state.dayReports,
+    calls: state.calls ?? [],
     sampleCrew: state.sampleCrew,
     prelaunchCleared: true,
   };
@@ -95,6 +97,12 @@ async function connect() {
   } else {
     useBoard.setState({ weeks: [] });
     await saveBoard({ data: snapshot() });
+  }
+  if (import.meta.env.DEV) {
+    const fresh = sampleReflections();
+    const current = useBoard.getState().calls ?? [];
+    const rest = current.filter((call) => !call.sample && !fresh.some((item) => item.id === call.id));
+    useBoard.setState({ calls: [...rest, ...fresh] });
   }
   lastSaved = JSON.stringify(snapshot());
   ready = true;

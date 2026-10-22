@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { Category, DayReport, Shop, Tech, WeekLog } from "@/lib/board/model";
+import type { Category, DayReport, PhoneCall, Shop, Tech, WeekLog } from "@/lib/board/model";
 
 export type BoardSnapshot = {
   shops: Shop[];
@@ -7,6 +7,7 @@ export type BoardSnapshot = {
   techs: Tech[];
   weeks: WeekLog[];
   dayReports: DayReport[];
+  calls: PhoneCall[];
   sampleCrew: boolean;
   prelaunchCleared?: boolean;
 };
@@ -23,6 +24,7 @@ function asSnapshot(input: unknown): BoardSnapshot {
     techs: data.techs.map((tech) => ({ ...tech, email: tech.email ?? "" })),
     weeks: data.weeks,
     dayReports: Array.isArray(data.dayReports) ? data.dayReports : [],
+    calls: Array.isArray(data.calls) ? data.calls : [],
     sampleCrew: Boolean(data.sampleCrew),
     prelaunchCleared: Boolean(data.prelaunchCleared),
   };
