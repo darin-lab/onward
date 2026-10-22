@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { DAY_FIELDS, type DayFieldKey } from "@/lib/board/model";
+import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/lib/board/model";
 import { owners } from "@/lib/board/owners";
 
 const managers: Record<string, string> = {
@@ -16,8 +16,7 @@ type MailInput = {
   date: string;
   values: Partial<Record<DayFieldKey, string>>;
   notes?: Partial<Record<DayFieldKey, string>>;
-  wentWell?: string;
-  didNotGoWell?: string;
+  answers?: Partial<Record<DayPromptKey, string>>;
 };
 
 export const mailDayReport = createServerFn({ method: "POST" })
@@ -32,17 +31,15 @@ export const mailDayReport = createServerFn({ method: "POST" })
       date: data.date,
       values: data.values ?? {},
       notes: data.notes ?? {},
-      wentWell: typeof data.wentWell === "string" ? data.wentWell : "",
-      didNotGoWell: typeof data.didNotGoWell === "string" ? data.didNotGoWell : "",
+      answers: data.answers ?? {},
     };
   })
   .handler(async ({ data }) => {
     const user = process.env.GMAIL_USER?.trim();
     const pass = process.env.GMAIL_APP_PASSWORD?.trim();
-    const manager = managers[data.shopId];
-    const to = [...owners.map((owner) => owner.email), manager].filter(
-      (email): email is string => Boolean(email),
-    );
+    const to = [
+      ...new Set([...owners.map((owner) => owner.email), ...Object.values(managers)]),
+    ];
     if (!user || !pass) {
       return { ok: false as const, reason: "not-configured" as const };
     }
@@ -53,8 +50,10 @@ export const mailDayReport = createServerFn({ method: "POST" })
       if (note) block.push("", "How will you grow that number tomorrow?", note);
       return block.join("\n");
     });
-    const wentWell = data.wentWell?.trim() || "—";
-    const didNot = data.didNotGoWell?.trim() || "—";
+    const prompts = DAY_PROMPTS.map((prompt) => ({
+      label: prompt.label,
+      value: data.answers?.[prompt.key]?.trim() || "—",
+    }));
     const when = readableDate(data.date);
     const text = [
       "End of Day Report",
@@ -62,11 +61,7 @@ export const mailDayReport = createServerFn({ method: "POST" })
       when,
       "",
       ...lines.flatMap((block) => [block, ""]),
-      "What went well",
-      wentWell,
-      "",
-      "What did not go so well?",
-      didNot,
+      ...prompts.flatMap((prompt) => [prompt.label, prompt.value, ""]),
     ].join("\n");
     const nodemailer = await import("nodemailer");
     const transport = nodemailer.createTransport({
@@ -88,8 +83,7 @@ export const mailDayReport = createServerFn({ method: "POST" })
           value: data.values[field.key]?.trim() || "—",
           note: data.notes?.[field.key]?.trim() || "",
         })),
-        wentWell,
-        didNot,
+        prompts,
       }),
     });
     return { ok: true as const };
@@ -119,14 +113,12 @@ function reportHtml({
   shopName,
   when,
   rows,
-  wentWell,
-  didNot,
+  prompts,
 }: {
   shopName: string;
   when: string;
   rows: { label: string; value: string; note: string }[];
-  wentWell: string;
-  didNot: string;
+  prompts: { label: string; value: string }[];
 }) {
   const body = rows
     .map((row) => {
@@ -164,8 +156,7 @@ function reportHtml({
             <tr>
               <td style="padding:8px 22px 22px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${body}</table>
-                ${noteBlock("What went well", wentWell)}
-                ${noteBlock("What did not go so well?", didNot)}
+                ${prompts.map((prompt) => noteBlock(prompt.label, prompt.value)).join("")}
               </td>
             </tr>
           </table>

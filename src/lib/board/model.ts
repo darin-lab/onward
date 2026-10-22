@@ -1,5 +1,6 @@
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
 import { isOwnerEmail } from "@/lib/board/owners";
+import { MANAGER_LEVELS } from "@/lib/board/rubric";
 
 export type PersonKind = "manager" | "technician";
 
@@ -80,13 +81,22 @@ export const DAY_FIELDS = [
 
 export type DayFieldKey = (typeof DAY_FIELDS)[number]["key"];
 
+export const DAY_PROMPTS = [
+  { key: "helpClient", label: "How did you best help a client today?" },
+  { key: "makeMoney", label: "What is something you did to make the shop money today?" },
+  { key: "shopBetter", label: "How did you make the shop better today?" },
+  { key: "didNotGoWell", label: "What is something that did not go well today?" },
+  { key: "proud", label: "What are you most proud of from today?" },
+] as const;
+
+export type DayPromptKey = (typeof DAY_PROMPTS)[number]["key"];
+
 export type DayReport = {
   shopId: string;
   date: string;
   values: Partial<Record<DayFieldKey, string>>;
   notes?: Partial<Record<DayFieldKey, string>>;
-  wentWell?: string;
-  didNotGoWell?: string;
+  answers?: Partial<Record<DayPromptKey, string>>;
   submitted?: boolean;
 };
 
@@ -203,10 +213,11 @@ export function nextWeekToLog(existing: string[], now = new Date()) {
   return next;
 }
 
-export function levelWord(score: number | undefined) {
+export function levelWord(score: number | undefined, kind: PersonKind = "technician") {
   if (score == null || Number.isNaN(score)) return "Not marked";
   const rounded = Math.min(5, Math.max(1, Math.round(score)));
-  return LEVELS.find((level) => level.score === rounded)?.word ?? "Steady";
+  const levels = kind === "manager" ? MANAGER_LEVELS : LEVELS;
+  return levels.find((level) => level.score === rounded)?.word ?? "Steady";
 }
 
 export function shiftWord(current: number | undefined, previous: number | undefined) {

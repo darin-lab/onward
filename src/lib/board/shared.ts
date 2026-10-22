@@ -1,4 +1,5 @@
 import { loadBoard, saveBoard, type BoardSnapshot } from "@/lib/board/board.functions";
+import { seedCategories } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
 
 function snapshot(): BoardSnapshot {
@@ -70,12 +71,25 @@ async function connect() {
       const previous = rest.techs[index];
       return tech.name !== previous?.name || tech.email !== (previous?.email ?? "");
     });
+    const categories = rest.categories.map((category) => {
+      if (category.kind !== "manager") return category;
+      const seed = seedCategories.find((item) => item.id === category.id);
+      return seed ? { ...category, name: seed.name, hint: seed.hint } : category;
+    });
+    for (const seed of seedCategories.filter((item) => item.kind === "manager")) {
+      if (!categories.some((category) => category.id === seed.id)) categories.push(seed);
+    }
+    const habitsChanged = categories.some((category, index) => {
+      const previous = rest.categories[index];
+      return category.name !== previous?.name || category.hint !== previous?.hint;
+    });
     useBoard.setState({
       ...rest,
       techs,
+      categories,
       weeks: clearWeeks ? [] : rest.weeks,
     });
-    if (clearWeeks || changed) {
+    if (clearWeeks || changed || habitsChanged) {
       await saveBoard({ data: snapshot() });
     }
   } else {

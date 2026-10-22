@@ -30,7 +30,7 @@ import {
   type Tech,
   type WeekLog,
 } from "@/lib/board/model";
-import { CompanyPoll } from "@/components/board/poll";
+import { MANAGER_LEVELS, managerTier } from "@/lib/board/rubric";
 import { useBoard } from "@/lib/board/store";
 
 function thursdayOf(monday: string) {
@@ -173,6 +173,10 @@ export function TechView({ tech }: { tech: Tech }) {
           onStart={(weekStart) => {
             startWeek(tech.id, weekStart);
             setPicked(weekStart);
+          }}
+          onDone={() => {
+            if (tech.kind === "manager") setReviewing(false);
+            else window.history.back();
           }}
         />
       ) : null}
@@ -1018,18 +1022,25 @@ function Notes({ week }: { week: WeekLog }) {
 function HabitMarks({ week, kind }: { week: WeekLog; kind: Tech["kind"] }) {
   const categories = categoriesFor(useBoard((state) => state.categories), kind);
   const upsertWeek = useBoard((state) => state.upsertWeek);
+  const levels = kind === "manager" ? MANAGER_LEVELS : LEVELS;
   return (
     <Card className="mt-6">
       <h2 className="text-2xl">Habits</h2>
-      <p className="mt-2 text-sm text-muted">Second to the numbers. One mark for the week.</p>
-      <ul className="mt-5 space-y-4">
+      <p className="mt-2 text-sm text-muted">
+        {kind === "manager"
+          ? "Rate the pattern for the week, not one moment."
+          : "Second to the numbers. One mark for the week."}
+      </p>
+      <ul className="mt-5 space-y-6">
         {categories.map((category) => {
           const score = week.scores[category.id];
+          const tier = kind === "manager" ? managerTier(category.id, score) : null;
           return (
             <li key={category.id}>
-              <p className="text-sm text-ink">{category.name}</p>
+              <p className="text-ink">{category.name}</p>
+              <p className="mt-1 text-sm text-muted">{category.hint}</p>
               <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label={category.name}>
-                {LEVELS.map((level) => {
+                {levels.map((level) => {
                   const on = score === level.score;
                   return (
                     <button
@@ -1054,6 +1065,18 @@ function HabitMarks({ week, kind }: { week: WeekLog; kind: Tech["kind"] }) {
                   );
                 })}
               </div>
+              {tier ? (
+                <div className="mt-3 rounded-xl bg-raised p-3">
+                  <p className="text-sm leading-snug text-ink">{tier.description}</p>
+                  <ul className="mt-2 space-y-1">
+                    {tier.behaviors.map((behavior) => (
+                      <li key={behavior} className="text-sm text-muted">
+                        {behavior}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -1083,8 +1106,9 @@ function Habits({
     <Card className="mt-6">
       <h2 className="text-2xl">How the habits landed</h2>
       <p className="mt-2 text-sm text-muted">
-        Starting, Practicing, Steady, Strong, or Showing others. This is where the habit
-        is this week, not a score against anyone else.
+        {kind === "manager"
+          ? "Needs Improvement through Exceptional. This is the pattern for the week, not one moment."
+          : "Starting, Practicing, Steady, Strong, or Showing others. This is where the habit is this week, not a score against anyone else."}
       </p>
       <ul className="mt-5 space-y-5">
         {rows.map((row) => (
@@ -1094,12 +1118,12 @@ function Habits({
                 <p className="text-ink">{row.name}</p>
                 <p className="text-sm text-muted">{row.hint}</p>
               </div>
-              <p className="shrink-0 text-sm text-honey">{levelWord(row.score)}</p>
+              <p className="shrink-0 text-sm text-honey">{levelWord(row.score, kind)}</p>
             </div>
             <div
               className="mt-2 flex gap-1.5"
               role="img"
-              aria-label={`${row.name}: ${levelWord(row.score)}`}
+              aria-label={`${row.name}: ${levelWord(row.score, kind)}`}
             >
               {LEVELS.map((level) => (
                 <span
@@ -1112,6 +1136,11 @@ function Habits({
               ))}
             </div>
             <p className="mt-1.5 text-sm text-muted">{shiftWord(row.score, row.before)}</p>
+            {kind === "manager" && managerTier(row.id, row.score) ? (
+              <p className="mt-2 text-sm leading-snug text-ink">
+                {managerTier(row.id, row.score)?.description}
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -1246,16 +1275,19 @@ function LeadWriter({
   week,
   upcoming,
   onStart,
+  onDone,
 }: {
   tech: Tech;
   week: WeekLog | null;
   upcoming: string | null;
   onStart: (weekStart: string) => void;
+  onDone: () => void;
 }) {
   const upsertWeek = useBoard((state) => state.upsertWeek);
   const removeTech = useBoard((state) => state.removeTech);
   const categories = categoriesFor(useBoard((state) => state.categories), tech.kind);
   const navigate = useNavigate();
+  const [sending, setSending] = useState(false);
 
   return (
     <div className="mt-10 space-y-4 border-t border-line pt-8">
@@ -1325,13 +1357,17 @@ function LeadWriter({
         <>
         <Button
           className="w-full text-base"
+          disabled={sending}
           onClick={() => {
+            if (sending) return;
+            setSending(true);
             if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
             const latest =
               useBoard.getState().weeks.find(
                 (item) => item.techId === week.techId && item.weekStart === week.weekStart,
               ) ?? week;
             upsertWeek({ ...latest, submitted: true });
+            onDone();
           }}
         >
           Submit

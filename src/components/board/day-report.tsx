@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { DAY_FIELDS, type DayFieldKey } from "@/lib/board/model";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { mailDayReport } from "@/lib/board/mail-report.functions";
 import { useBoard } from "@/lib/board/store";
@@ -135,6 +135,12 @@ function asPercent(part: number | null, whole: number | null) {
   return `${(Math.round((part / whole) * 1000) / 10).toFixed(1)}%`;
 }
 
+const MIN_NOTE = 13;
+
+function longEnough(value: string | undefined) {
+  return (value?.trim().length ?? 0) >= MIN_NOTE;
+}
+
 function belowGoal(key: DayFieldKey, raw: string | undefined) {
   const goal = GOALS[key];
   const value = readNumber(raw);
@@ -147,28 +153,41 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const shop = useBoard((state) => state.shops.find((item) => item.id === shopId));
   const reports = useBoard((state) => state.dayReports);
   const upsertDayReport = useBoard((state) => state.upsertDayReport);
+  const managerId = useBoard(
+    (state) => state.techs.find((person) => person.kind === "manager" && person.shopId === shopId)?.id,
+  );
+  const navigate = useNavigate();
+  const [sending, setSending] = useState(false);
   const [date, setDate] = useState(todayISO);
   const saved = reports.find((report) => report.shopId === shopId && report.date === date);
   const [draft, setDraft] = useState<Partial<Record<DayFieldKey, string>>>(saved?.values ?? {});
   const [notes, setNotes] = useState<Partial<Record<DayFieldKey, string>>>(saved?.notes ?? {});
-  const [wentWell, setWentWell] = useState(saved?.wentWell ?? "");
-  const [didNotGoWell, setDidNotGoWell] = useState(saved?.didNotGoWell ?? "");
+  const [answers, setAnswers] = useState<Partial<Record<DayPromptKey, string>>>(saved?.answers ?? {});
   const [draftDate, setDraftDate] = useState(date);
 
   if (draftDate !== date) {
     setDraftDate(date);
     setDraft(saved?.values ?? {});
     setNotes(saved?.notes ?? {});
-    setWentWell(saved?.wentWell ?? "");
-    setDidNotGoWell(saved?.didNotGoWell ?? "");
+    setAnswers(saved?.answers ?? {});
   }
 
   const submitted = Boolean(saved?.submitted);
-  const [mailNote, setMailNote] = useState("");
   const best = BEST_MONTH[shopId];
   const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
-  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.workHours));
-  const shown: Partial<Record<DayFieldKey, string>> = { ...draft, productivity, efficiency };
+  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.serviceHours));
+  const proficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.availableHours));
+  const shown: Partial<Record<DayFieldKey, string>> = {
+    ...draft,
+    productivity,
+    efficiency,
+    proficiency,
+  };
+  const notesReady = DAY_FIELDS.every(
+    (field) => !belowGoal(field.key, shown[field.key]) || longEnough(notes[field.key]),
+  );
+  const promptsReady = DAY_PROMPTS.every((prompt) => longEnough(answers[prompt.key]));
+  const ready = notesReady && promptsReady;
 
   useEffect(() => {
     if (submitted) return;
@@ -267,44 +286,46 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                     className={cn(fieldClass, "mt-1.5 min-h-16 w-full py-2")}
                   />
                 ) : null}
+                {low && !longEnough(notes[field.key]) ? (
+                  <p className="mt-1 text-xs text-muted">13 characters minimum</p>
+                ) : null}
               </li>
             );
           })}
         </ul>
-        <label className="mt-4 block text-sm text-ink" htmlFor="went-well">
-          What went well
-        </label>
-        <textarea
-          id="went-well"
-          value={wentWell}
-          onChange={(event) => setWentWell(event.target.value)}
-          className={cn(fieldClass, "mt-1.5 min-h-24 w-full py-2")}
-        />
-        <label className="mt-4 block text-sm text-ink" htmlFor="did-not">
-          What did not go so well?
-        </label>
-        <textarea
-          id="did-not"
-          value={didNotGoWell}
-          onChange={(event) => setDidNotGoWell(event.target.value)}
-          className={cn(fieldClass, "mt-1.5 min-h-24 w-full py-2")}
-        />
+        {DAY_PROMPTS.map((prompt) => (
+          <label key={prompt.key} className="mt-4 block text-sm text-ink" htmlFor={prompt.key}>
+            {prompt.label}
+            <textarea
+              id={prompt.key}
+              value={answers[prompt.key] ?? ""}
+              onChange={(event) =>
+                setAnswers((current) => ({ ...current, [prompt.key]: event.target.value }))
+              }
+              className={cn(fieldClass, "mt-1.5 min-h-24 w-full py-2")}
+            />
+            {longEnough(answers[prompt.key]) ? null : (
+              <span className="mt-1 block text-xs text-muted">13 characters minimum</span>
+            )}
+          </label>
+        ))}
       </Card>
 
       <Button
         className="mt-6 w-full text-base"
+        disabled={sending || !ready}
         onClick={() => {
+          if (sending || !ready) return;
+          setSending(true);
           const report = {
             shopId,
             date,
             values: shown,
             notes,
-            wentWell,
-            didNotGoWell,
+            answers,
             submitted: true,
           };
           upsertDayReport(report);
-          setMailNote("Sending the copy…");
           void mailDayReport({
             data: {
               shopId,
@@ -312,26 +333,18 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               date,
               values: shown,
               notes,
-              wentWell,
-              didNotGoWell,
+              answers,
             },
-          })
-            .then((result) => {
-              setMailNote(
-                result.ok
-                  ? "A copy was emailed to you, Arun, and the shop manager."
-                  : "The report is saved. Email is not set up on the server yet.",
-              );
-            })
-            .catch(() => {
-              setMailNote("The report is saved. The email could not be sent.");
-            });
+          });
+          if (window.history.length > 1) window.history.back();
+          else if (managerId) navigate({ to: "/t/$techId", params: { techId: managerId } });
+          else navigate({ to: "/" });
         }}
       >
         Submit
       </Button>
       <p className="mt-3 text-sm text-muted">
-        {mailNote || (submitted ? "This report is submitted." : "Submit when the day is filled in.")}
+        {ready ? "Submit when the day is filled in." : "Each note needs at least 13 characters."}
       </p>
     </div>
   );
