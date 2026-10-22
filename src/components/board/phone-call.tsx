@@ -57,12 +57,14 @@ export function CallReview({
   shopName,
   index = 1,
   total = 1,
+  onDone,
 }: {
   call: PhoneCall;
   person: Tech;
   shopName: string;
   index?: number;
   total?: number;
+  onDone?: () => void;
 }) {
   const answerCall = useBoard((state) => state.answerCall);
   const [text, setText] = useState("");
@@ -122,6 +124,10 @@ export function CallReview({
               className="mt-3 w-full"
               disabled={!ready}
               onClick={() => {
+                if (person.id !== call.managerId) {
+                  onDone?.();
+                  return;
+                }
                 if (!ready) return;
                 setSending(true);
                 const answer = text.trim();
@@ -186,7 +192,15 @@ export function CallBell() {
         </span>
       </span>
       {open ? (
-        <CallReview key={call.id} call={call} person={actor} shopName={shopName} index={1} total={queue.length} />
+        <CallReview
+          key={call.id}
+          call={call}
+          person={actor}
+          shopName={shopName}
+          index={1}
+          total={queue.length}
+          onDone={() => setOpen(false)}
+        />
       ) : null}
     </>
   );

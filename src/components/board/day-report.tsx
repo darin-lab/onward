@@ -5,7 +5,6 @@ import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { mailDayReport } from "@/lib/board/mail-report.functions";
 import { useBoard } from "@/lib/board/store";
 import { CallReview, pendingCalls } from "@/components/board/phone-call";
-import { isOwnerViewer } from "@/lib/board/model";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 
@@ -214,29 +213,16 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   }, [shopId, date, submitted]);
 
   const person = techs.find((item) => item.id === viewer);
-  const queue = pendingCalls(calls, person?.id ?? viewer);
-  const waiting = queue[0];
-  const actor =
-    person ??
-    (waiting && import.meta.env.DEV && isOwnerViewer(viewer)
-      ? {
-          id: "darin",
-          name: "Darin Dinis",
-          role: "Owner",
-          kind: "manager" as const,
-          shopId: waiting.managerId ? techs.find((item) => item.id === waiting.managerId)?.shopId ?? shopId : shopId,
-          email: "",
-        }
-      : null);
-  if (waiting && actor && (person?.kind === "manager" || actor.role === "Owner")) {
+  const waiting = person?.kind === "manager" ? pendingCalls(calls, person.id)[0] : null;
+  if (waiting && person) {
     return (
       <CallReview
         key={waiting.id}
         call={waiting}
-        person={actor}
-        shopName={shop?.name ?? actor.shopId}
+        person={person}
+        shopName={shop?.name ?? person.shopId}
         index={1}
-        total={queue.length}
+        total={pendingCalls(calls, person.id).length}
       />
     );
   }

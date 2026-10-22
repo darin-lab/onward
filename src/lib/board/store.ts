@@ -137,7 +137,7 @@ export const useBoard = create<BoardState>()(
       answerCall: (id, answer) =>
         set((state) => ({
           calls: (state.calls ?? []).map((call) => {
-            if (call.id !== id) return call;
+            if (call.id !== id || answer.personId !== call.managerId) return call;
             const answers = call.answers.some((item) => item.personId === answer.personId)
               ? call.answers
               : [...call.answers, answer];
