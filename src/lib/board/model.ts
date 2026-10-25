@@ -195,17 +195,19 @@ export function shortWeekLabel(weekStart: string) {
   return format(parseISO(weekStart), "MMM d");
 }
 
-export type WeekRelation = "last" | "current" | "earlier";
+export type WeekRelation = "last" | "current" | "next" | "earlier";
 
 export function weekRelation(weekStart: string, now = new Date()): WeekRelation {
   if (weekStart === priorWeekISO(now)) return "last";
   if (weekStart === currentWeekISO(now)) return "current";
+  if (now.getDay() === 0 && weekStart === addWeekISO(mondayISO(now), 1)) return "next";
   return "earlier";
 }
 
 export function relationLabel(relation: WeekRelation) {
   if (relation === "last") return "Last week";
   if (relation === "current") return "This week, still open";
+  if (relation === "next") return "Next week";
   return "Earlier week";
 }
 
@@ -223,7 +225,7 @@ export function featuredWeek(weeks: WeekLog[], techId: string, now = new Date())
 }
 
 export function nextWeekToLog(existing: string[], now = new Date()) {
-  const current = currentWeekISO(now);
+  const current = now.getDay() === 0 ? addWeekISO(mondayISO(now), 1) : currentWeekISO(now);
   if (existing.length === 0) return priorWeekISO(now);
   const latest = [...existing].sort().at(-1);
   if (!latest) return priorWeekISO(now);

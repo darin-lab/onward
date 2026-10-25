@@ -54,6 +54,18 @@ export function TechView({ tech }: { tech: Tech }) {
   const upcoming = nextWeekToLog(list.map((week) => week.weekStart));
   const viewer = useBoard((state) => state.viewer);
   const [reviewing, setReviewing] = useState(false);
+  const canLog = canReview(viewer, tech, techs);
+  const canOpenUpcoming = Boolean(canLog && upcoming && upcoming !== active?.weekStart);
+  const openLater = () => {
+    if (next) {
+      setPicked(next.weekStart);
+      return;
+    }
+    if (!upcoming || !canLog) return;
+    if (!list.some((week) => week.weekStart === upcoming)) startWeek(tech.id, upcoming);
+    setPicked(upcoming);
+    if (tech.kind === "manager") setReviewing(true);
+  };
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -125,10 +137,15 @@ export function TechView({ tech }: { tech: Tech }) {
         <WeekSwitcher
           week={active}
           hasPrevious={Boolean(previous)}
-          hasNext={Boolean(next)}
+          hasNext={Boolean(next) || canOpenUpcoming}
           onPrevious={() => previous && setPicked(previous.weekStart)}
-          onNext={() => next && setPicked(next.weekStart)}
+          onNext={openLater}
         />
+        {canOpenUpcoming && upcoming ? (
+          <p className="mt-2 text-center text-sm text-muted">
+            The week of {weekRangeLabel(upcoming)} is ready.
+          </p>
+        ) : null}
       ) : null}
 
       {tech.kind === "technician" && active ? (
