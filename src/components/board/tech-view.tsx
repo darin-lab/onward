@@ -19,6 +19,7 @@ import {
   managerRanks,
   levelWord,
   nextWeekToLog,
+  newestReviewWeekISO,
   peerRanks,
   priorWeekISO,
   relationLabel,
@@ -66,6 +67,17 @@ export function TechView({ tech }: { tech: Tech }) {
     setPicked(upcoming);
     if (tech.kind === "manager") setReviewing(true);
   };
+  useEffect(() => {
+    if (!canLog) return;
+    const newest = newestReviewWeekISO();
+    const last = priorWeekISO();
+    const have = new Set(
+      useBoard.getState().weeks.filter((week) => week.techId === tech.id).map((week) => week.weekStart),
+    );
+    if (!have.has(last)) startWeek(tech.id, last);
+    if (newest !== last && !have.has(newest)) startWeek(tech.id, newest);
+    setPicked((current) => current ?? newest);
+  }, [canLog, tech.id, startWeek]);
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -134,18 +146,38 @@ export function TechView({ tech }: { tech: Tech }) {
       ) : null}
 
       {active ? (
-        <WeekSwitcher
-          week={active}
-          hasPrevious={Boolean(previous)}
-          hasNext={Boolean(next) || canOpenUpcoming}
-          onPrevious={() => previous && setPicked(previous.weekStart)}
-          onNext={openLater}
-        />
-        {canOpenUpcoming && upcoming ? (
-          <p className="mt-2 text-center text-sm text-muted">
-            The week of {weekRangeLabel(upcoming)} is ready.
-          </p>
-        ) : null}
+        <>
+          <WeekSwitcher
+            week={active}
+            hasPrevious={Boolean(previous) || Boolean(active && canLog && priorWeekISO() < active.weekStart)}
+            hasNext={Boolean(next) || canOpenUpcoming}
+            onPrevious={() => {
+              if (previous) {
+                setPicked(previous.weekStart);
+                return;
+              }
+              const last = priorWeekISO();
+              if (!active || !canLog || last >= active.weekStart) return;
+              if (!list.some((week) => week.weekStart === last)) startWeek(tech.id, last);
+              setPicked(last);
+              if (tech.kind === "manager") setReviewing(true);
+            }}
+            onNext={openLater}
+          />
+          {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing ? (
+            <Button
+              className="mt-4 w-full text-base"
+              onClick={() => {
+                const weekStart = active?.weekStart ?? newestReviewWeekISO();
+                if (!list.some((week) => week.weekStart === weekStart)) startWeek(tech.id, weekStart);
+                setPicked(weekStart);
+                setReviewing(true);
+              }}
+            >
+              Review
+            </Button>
+          ) : null}
+        </>
       ) : null}
 
       {tech.kind === "technician" && active ? (
@@ -196,20 +228,6 @@ export function TechView({ tech }: { tech: Tech }) {
             else window.history.back();
           }}
         />
-      ) : null}
-      {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing ? (
-        <Button
-          className="mt-10 w-full text-base"
-          onClick={() => {
-            if (!active && upcoming) {
-              startWeek(tech.id, upcoming);
-              setPicked(upcoming);
-            }
-            setReviewing(true);
-          }}
-        >
-          Review
-        </Button>
       ) : null}
     </div>
   );

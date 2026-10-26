@@ -207,7 +207,7 @@ export function weekRelation(weekStart: string, now = new Date()): WeekRelation 
 export function relationLabel(relation: WeekRelation) {
   if (relation === "last") return "Last week";
   if (relation === "current") return "This week, still open";
-  if (relation === "next") return "Next week";
+  if (relation === "next") return "This week";
   return "Earlier week";
 }
 
@@ -218,14 +218,24 @@ export function weeksFor(weeks: WeekLog[], techId: string) {
     .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 }
 
+export function newestReviewWeekISO(now = new Date()) {
+  if (now.getDay() === 0) return addWeekISO(mondayISO(now), 1);
+  return currentWeekISO(now);
+}
+
 export function featuredWeek(weeks: WeekLog[], techId: string, now = new Date()) {
   const list = weeksFor(weeks, techId);
-  const prior = priorWeekISO(now);
-  return list.find((week) => week.weekStart === prior) ?? list.at(-1) ?? null;
+  const newest = newestReviewWeekISO(now);
+  return (
+    list.find((week) => week.weekStart === newest) ??
+    list.find((week) => week.weekStart === priorWeekISO(now)) ??
+    list.at(-1) ??
+    null
+  );
 }
 
 export function nextWeekToLog(existing: string[], now = new Date()) {
-  const current = now.getDay() === 0 ? addWeekISO(mondayISO(now), 1) : currentWeekISO(now);
+  const current = newestReviewWeekISO(now);
   if (existing.length === 0) return priorWeekISO(now);
   const latest = [...existing].sort().at(-1);
   if (!latest) return priorWeekISO(now);
