@@ -57,6 +57,7 @@ export function CallReview({
   shopName,
   index = 1,
   total = 1,
+  lead,
   onDone,
 }: {
   call: PhoneCall;
@@ -64,6 +65,7 @@ export function CallReview({
   shopName: string;
   index?: number;
   total?: number;
+  lead?: string;
   onDone?: () => void;
 }) {
   const answerCall = useBoard((state) => state.answerCall);
@@ -75,9 +77,18 @@ export function CallReview({
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-4 text-left sm:items-center">
       <div className="w-full max-w-sm">
-        <p className="mb-20 text-center font-display text-sm tracking-[0.18em] text-zinc-300 uppercase">
-          Call reflection{total > 1 ? ` ${index} of ${total}` : ""}
-        </p>
+        {lead ? (
+          <>
+            <p className="mb-3 text-center font-display text-2xl text-zinc-100">{lead}</p>
+            <p className="mb-16 text-center text-sm text-zinc-300">
+              Call reflection{total > 1 ? ` ${index} of ${total}` : ""}
+            </p>
+          </>
+        ) : (
+          <p className="mb-20 text-center font-display text-sm tracking-[0.18em] text-zinc-300 uppercase">
+            Call reflection{total > 1 ? ` ${index} of ${total}` : ""}
+          </p>
+        )}
         <div className="relative mx-auto w-[min(100%,280px)]">
           <div className="absolute -top-10 left-1/2 h-10 w-1.5 -translate-x-1/2 rounded-t-full bg-zinc-500" />
           <div className="absolute -top-14 left-1/2 h-5 w-1.5 origin-bottom -translate-x-1/2 -rotate-12 rounded-full bg-zinc-400" />
@@ -124,11 +135,7 @@ export function CallReview({
               className="mt-3 w-full"
               disabled={!ready}
               onClick={() => {
-                if (person.id !== call.managerId) {
-                  onDone?.();
-                  return;
-                }
-                if (!ready) return;
+                if (person.id !== call.managerId || !ready) return;
                 setSending(true);
                 const answer = text.trim();
                 answerCall(call.id, {
@@ -148,7 +155,7 @@ export function CallReview({
                     audio: call.audio,
                     audioName: call.audioName,
                   },
-                });
+                }).finally(() => onDone?.());
               }}
             >
               Send

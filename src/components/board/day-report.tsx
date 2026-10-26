@@ -223,6 +223,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         shopName={shop?.name ?? person.shopId}
         index={1}
         total={pendingCalls(calls, person.id).length}
+        lead="Let's take care of these first."
       />
     );
   }
