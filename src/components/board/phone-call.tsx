@@ -305,12 +305,12 @@ export function CallComposer() {
               return;
             }
             setTrimming(true);
-            setNote("That clip is long. Keeping the last minute.");
-            void lastMinute(file)
+            setNote("That clip is long. Keeping the last 4 minutes.");
+            void lastStretch(file)
               .then((clip) => {
                 setAudio(clip.dataUrl);
                 setAudioName(clip.name);
-                setNote("Only the last minute was kept.");
+                setNote("Only the last 4 minutes were kept.");
               })
               .catch(() => {
                 setNote("That clip could not be shortened. Try a shorter file.");
@@ -370,12 +370,13 @@ function PhoneMark() {
   );
 }
 
-async function lastMinute(file: File) {
+async function lastStretch(file: File) {
   const ctx = new AudioContext();
   try {
     const decoded = await ctx.decodeAudioData((await file.arrayBuffer()).slice(0));
-    const rate = 16000;
-    const start = Math.max(0, decoded.duration - 60);
+    const rate = 8000;
+    const seconds = 240;
+    const start = Math.max(0, decoded.duration - seconds);
     const length = Math.max(1, Math.ceil((decoded.duration - start) * rate));
     const offline = new OfflineAudioContext(1, length, rate);
     const source = offline.createBufferSource();
@@ -383,11 +384,11 @@ async function lastMinute(file: File) {
     source.connect(offline.destination);
     source.start(0, start);
     const rendered = await offline.startRendering();
-    const wav = encodeWav(rendered);
+    const wav = encodeMulawWav(rendered);
     const blob = new Blob([wav], { type: "audio/wav" });
     const dataUrl = await readBlob(blob);
     const base = file.name.replace(/\.[^.]+$/, "") || "call";
-    return { dataUrl, name: `${base}-last-minute.wav` };
+    return { dataUrl, name: `${base}-last-4-minutes.wav` };
   } finally {
     await ctx.close();
   }
@@ -402,9 +403,9 @@ function readBlob(blob: Blob) {
   });
 }
 
-function encodeWav(buffer: AudioBuffer) {
+function encodeMulawWav(buffer: AudioBuffer) {
   const samples = buffer.getChannelData(0);
-  const dataSize = samples.length * 2;
+  const dataSize = samples.length;
   const out = new ArrayBuffer(44 + dataSize);
   const view = new DataView(out);
   const write = (offset: number, value: string) => {
@@ -415,21 +416,35 @@ function encodeWav(buffer: AudioBuffer) {
   write(8, "WAVE");
   write(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
+  view.setUint16(20, 7, true);
   view.setUint16(22, 1, true);
   view.setUint32(24, buffer.sampleRate, true);
-  view.setUint32(28, buffer.sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
+  view.setUint32(28, buffer.sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
   write(36, "data");
   view.setUint32(40, dataSize, true);
-  let offset = 44;
   for (let i = 0; i < samples.length; i += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[i] ?? 0));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    offset += 2;
+    view.setUint8(44 + i, linearToMulaw(samples[i] ?? 0));
   }
   return out;
+}
+
+function linearToMulaw(sample: number) {
+  const max = 0x1fff;
+  const bias = 33;
+  let pcm = Math.round(Math.max(-1, Math.min(1, sample)) * 32768);
+  let sign = 0;
+  if (pcm < 0) {
+    sign = 0x80;
+    pcm = -pcm;
+  }
+  if (pcm > max) pcm = max;
+  pcm += bias;
+  let exponent = 7;
+  for (let mask = 0x4000; (pcm & mask) === 0 && exponent > 0; exponent -= 1, mask >>= 1);
+  const mantissa = (pcm >> (exponent + 3)) & 0x0f;
+  return ~(sign | (exponent << 4) | mantissa) & 0xff;
 }
 
 function ownerStandIn(viewer: string, techs: Tech[], call: PhoneCall): Tech | null {
