@@ -43,11 +43,30 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
   return asSnapshot(parsed);
 });
 
+function mergeCalls(saved: PhoneCall[], incoming: PhoneCall[]) {
+  const byId = new Map(saved.map((call) => [call.id, call]));
+  for (const call of incoming) {
+    const previous = byId.get(call.id);
+    if (!previous || call.answers.length > previous.answers.length) byId.set(call.id, call);
+  }
+  return [...byId.values()];
+}
+
 export const saveBoard = createServerFn({ method: "POST" })
   .validator((input: unknown) => asSnapshot(input))
   .handler(async ({ data }) => {
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
+    const rows = await sql.query<{ data: string }>(
+      "select data from board_state where id = $1",
+      ["main"],
+    );
+    const raw = rows[0]?.data;
+    if (raw) {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const saved = asSnapshot(parsed);
+      data.calls = mergeCalls(saved.calls, data.calls);
+    }
     await sql.query(
       `insert into board_state (id, data, updated_at)
        values ($1, $2, now())
