@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { HabitChart, HoursChart } from "@/components/board/charts";
+import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
