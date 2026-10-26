@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { TriangleAlert } from "lucide-react";
 
@@ -9,7 +10,20 @@ function errorMessage(error: unknown): string {
   return FALLBACK_MESSAGE;
 }
 
+function staleBundle(message: string) {
+  return /dynamically imported module|module script failed|Importing a module script failed/i.test(message);
+}
+
 export function AppErrorComponent({ error }: ErrorComponentProps) {
+  const message = errorMessage(error);
+  useEffect(() => {
+    if (!staleBundle(message)) return;
+    const key = "onward-reload";
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    window.location.reload();
+  }, [message]);
+
   return (
     <main
       className={
@@ -21,9 +35,19 @@ export function AppErrorComponent({ error }: ErrorComponentProps) {
         <TriangleAlert className="size-10" strokeWidth={2} />
       </span>
       <h1 className="text-lg font-semibold">Something went wrong</h1>
-      <p className="max-w-md text-sm break-words text-zinc-500 dark:text-zinc-400">
-        {errorMessage(error)}
-      </p>
+      <p className="max-w-md text-sm break-words text-zinc-500 dark:text-zinc-400">{message}</p>
+      {staleBundle(message) ? (
+        <button
+          type="button"
+          className="mt-2 text-sm underline"
+          onClick={() => {
+            sessionStorage.removeItem("onward-reload");
+            window.location.reload();
+          }}
+        >
+          Reload
+        </button>
+      ) : null}
     </main>
   );
 }
