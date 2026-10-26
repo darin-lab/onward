@@ -182,6 +182,13 @@ export function addWeekISO(weekStart: string, weeks = 1) {
   return format(addDays(parseISO(weekStart), 7 * weeks), "yyyy-MM-dd");
 }
 
+export function isWeekLocked(weekStart: string, now = new Date()) {
+  const lock = addDays(parseISO(weekStart), 9);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const lockDay = new Date(lock.getFullYear(), lock.getMonth(), lock.getDate());
+  return today >= lockDay;
+}
+
 export function weekRangeLabel(weekStart: string) {
   const start = parseISO(weekStart);
   const end = addDays(start, 3);

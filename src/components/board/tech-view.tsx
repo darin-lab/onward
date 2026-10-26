@@ -15,6 +15,8 @@ import {
   formatHours,
   formatMoney,
   formatRecord,
+  isOwnerViewer,
+  isWeekLocked,
   managerRanks,
   levelWord,
   nextWeekToLog,
@@ -63,7 +65,7 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!upcoming || !canLog) return;
     if (!list.some((week) => week.weekStart === upcoming)) startWeek(tech.id, upcoming);
     setPicked(upcoming);
-    if (tech.kind === "manager") setReviewing(true);
+    if (tech.kind === "manager" && !isWeekLocked(upcoming)) setReviewing(true);
   };
   useEffect(() => {
     if (!canLog) return;
@@ -78,7 +80,8 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [reviewing]);
-  const writing = canReview(viewer, tech, techs) && (tech.kind !== "manager" || reviewing);
+  const locked = Boolean(active && isWeekLocked(active.weekStart));
+  const writing = canReview(viewer, tech, techs) && !locked && (tech.kind !== "manager" || reviewing);
   const visible = canViewReview(viewer, tech, techs);
 
   useEffect(() => {
@@ -153,11 +156,12 @@ export function TechView({ tech }: { tech: Tech }) {
             if (!active || !canLog || last >= active.weekStart) return;
             if (!list.some((week) => week.weekStart === last)) startWeek(tech.id, last);
             setPicked(last);
-            if (tech.kind === "manager") setReviewing(true);
+            if (tech.kind === "manager" && !isWeekLocked(last)) setReviewing(true);
           }}
           onNext={openLater}
         />
       ) : null}
+      {locked ? <p className="mt-2 text-center text-sm text-muted">Locked on Wednesday.</p> : null}
 
       {tech.kind === "technician" && active ? (
         <WeekWork list={list} week={active} writing={writing} detail={visible} />
@@ -207,6 +211,19 @@ export function TechView({ tech }: { tech: Tech }) {
             else window.history.back();
           }}
         />
+      ) : null}
+      {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing && !locked ? (
+        <Button
+          className="mt-10 w-full text-base"
+          onClick={() => {
+            const weekStart = active?.weekStart ?? priorWeekISO();
+            if (!list.some((week) => week.weekStart === weekStart)) startWeek(tech.id, weekStart);
+            setPicked(weekStart);
+            setReviewing(true);
+          }}
+        >
+          {active?.submitted ? "Edit" : "Review"}
+        </Button>
       ) : null}
     </div>
   );
