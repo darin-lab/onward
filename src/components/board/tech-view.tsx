@@ -15,11 +15,9 @@ import {
   formatHours,
   formatMoney,
   formatRecord,
-  isOwnerViewer,
   managerRanks,
   levelWord,
   nextWeekToLog,
-  newestReviewWeekISO,
   peerRanks,
   priorWeekISO,
   relationLabel,
@@ -69,14 +67,12 @@ export function TechView({ tech }: { tech: Tech }) {
   };
   useEffect(() => {
     if (!canLog) return;
-    const newest = newestReviewWeekISO();
     const last = priorWeekISO();
     const have = new Set(
       useBoard.getState().weeks.filter((week) => week.techId === tech.id).map((week) => week.weekStart),
     );
     if (!have.has(last)) startWeek(tech.id, last);
-    if (newest !== last && !have.has(newest)) startWeek(tech.id, newest);
-    setPicked((current) => current ?? newest);
+    setPicked((current) => current ?? last);
   }, [canLog, tech.id, startWeek]);
   useEffect(() => {
     if (!reviewing) return;
@@ -99,18 +95,20 @@ export function TechView({ tech }: { tech: Tech }) {
       const current = useBoard.getState().weeks.find(
         (week) => week.techId === tech.id && week.weekStart === weekStart,
       );
-      if (!current || current.submitted) return;
+      if (!current) return;
       const week = result.week;
+      const pick = (kept: number | null, incoming: number | null) =>
+        current.submitted ? (kept ?? incoming) : (incoming ?? kept);
       const next = {
         ...current,
-        totalSales: week.totalSales ?? current.totalSales,
-        sellThrough: week.sellThrough ?? current.sellThrough,
-        averageRepairOrder: week.averageRepairOrder ?? current.averageRepairOrder,
-        hoursPerRepairOrder: week.hoursPerRepairOrder ?? current.hoursPerRepairOrder,
-        recsPerVehicle: week.recsPerVehicle ?? current.recsPerVehicle,
-        salesPerBilledHour: week.salesPerBilledHour ?? current.salesPerBilledHour,
-        billedHours: week.billedHours ?? current.billedHours,
-        cars: week.cars ?? current.cars,
+        totalSales: pick(current.totalSales, week.totalSales),
+        sellThrough: pick(current.sellThrough, week.sellThrough),
+        averageRepairOrder: pick(current.averageRepairOrder, week.averageRepairOrder),
+        hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week.hoursPerRepairOrder),
+        recsPerVehicle: pick(current.recsPerVehicle, week.recsPerVehicle),
+        salesPerBilledHour: pick(current.salesPerBilledHour, week.salesPerBilledHour),
+        billedHours: pick(current.billedHours, week.billedHours),
+        cars: pick(current.cars, week.cars),
       };
       const same =
         next.totalSales === current.totalSales &&
@@ -142,38 +140,23 @@ export function TechView({ tech }: { tech: Tech }) {
       ) : null}
 
       {active ? (
-        <>
-          <WeekSwitcher
-            week={active}
-            hasPrevious={Boolean(previous) || Boolean(active && canLog && priorWeekISO() < active.weekStart)}
-            hasNext={Boolean(next) || canOpenUpcoming}
-            onPrevious={() => {
-              if (previous) {
-                setPicked(previous.weekStart);
-                return;
-              }
-              const last = priorWeekISO();
-              if (!active || !canLog || last >= active.weekStart) return;
-              if (!list.some((week) => week.weekStart === last)) startWeek(tech.id, last);
-              setPicked(last);
-              if (tech.kind === "manager") setReviewing(true);
-            }}
-            onNext={openLater}
-          />
-          {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing ? (
-            <Button
-              className="mt-4 w-full text-base"
-              onClick={() => {
-                const weekStart = active?.weekStart ?? newestReviewWeekISO();
-                if (!list.some((week) => week.weekStart === weekStart)) startWeek(tech.id, weekStart);
-                setPicked(weekStart);
-                setReviewing(true);
-              }}
-            >
-              Review
-            </Button>
-          ) : null}
-        </>
+        <WeekSwitcher
+          week={active}
+          hasPrevious={Boolean(previous) || Boolean(active && canLog && priorWeekISO() < active.weekStart)}
+          hasNext={Boolean(next) || canOpenUpcoming}
+          onPrevious={() => {
+            if (previous) {
+              setPicked(previous.weekStart);
+              return;
+            }
+            const last = priorWeekISO();
+            if (!active || !canLog || last >= active.weekStart) return;
+            if (!list.some((week) => week.weekStart === last)) startWeek(tech.id, last);
+            setPicked(last);
+            if (tech.kind === "manager") setReviewing(true);
+          }}
+          onNext={openLater}
+        />
       ) : null}
 
       {tech.kind === "technician" && active ? (
@@ -460,7 +443,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     },
     {
       id: "hours-per-ro",
-      label: "HPRO",
+      label: "Hours per repair order",
       value: week.hoursPerRepairOrder,
       max: 40,
       rank: ranks.hoursPerRepairOrder,
@@ -482,7 +465,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     },
     {
       id: "sales-per-hour",
-      label: "SPBH",
+      label: "Sales per billed hour",
       value: week.salesPerBilledHour,
       max: 2000,
       rank: ranks.salesPerBilledHour,
@@ -586,9 +569,9 @@ function ManagerArcs({ list, week }: { list: WeekLog[]; week: WeekLog }) {
     { key: "totalSales", title: "Total sales", format: formatMoney },
     { key: "sellThrough", title: "Sell through percentage", format: (value) => `${formatHours(value)}%` },
     { key: "averageRepairOrder", title: "ARO", format: formatMoney },
-    { key: "hoursPerRepairOrder", title: "HPRO", format: formatHours },
+    { key: "hoursPerRepairOrder", title: "Hours per repair order", format: formatHours },
     { key: "recsPerVehicle", title: "Recommendation per car", format: formatMoney },
-    { key: "salesPerBilledHour", title: "SPBH", format: formatMoney },
+    { key: "salesPerBilledHour", title: "Sales per billed hour", format: formatMoney },
     { key: "grossProfit", title: "Gross profit", format: formatMoney },
   ];
   const shown = metrics.filter((metric) => list.some((item) => item[metric.key] != null));

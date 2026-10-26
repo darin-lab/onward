@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { pinSignIn, pinSignOut, pinStatus } from "@/lib/board/pin.functions";
+import { fieldClass } from "@/components/board/ui";
 import { useBoard } from "@/lib/board/store";
 import { CallBell } from "@/components/board/phone-call";
 

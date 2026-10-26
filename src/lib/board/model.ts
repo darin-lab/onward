@@ -225,13 +225,8 @@ export function newestReviewWeekISO(now = new Date()) {
 
 export function featuredWeek(weeks: WeekLog[], techId: string, now = new Date()) {
   const list = weeksFor(weeks, techId);
-  const newest = newestReviewWeekISO(now);
-  return (
-    list.find((week) => week.weekStart === newest) ??
-    list.find((week) => week.weekStart === priorWeekISO(now)) ??
-    list.at(-1) ??
-    null
-  );
+  const review = priorWeekISO(now);
+  return list.find((week) => week.weekStart === review) ?? list.filter((week) => week.weekStart <= review).at(-1) ?? null;
 }
 
 export function nextWeekToLog(existing: string[], now = new Date()) {
