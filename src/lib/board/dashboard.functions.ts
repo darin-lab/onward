@@ -131,3 +131,32 @@ export const pullShopRange = createServerFn({ method: "POST" })
       return { ok: false as const };
     }
   });
+
+function pacificMonth(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  return { start, end };
+}
+
+export const pullMonthSales = createServerFn({ method: "GET" }).handler(async () => {
+  const { start, end } = pacificMonth();
+  try {
+    const rows = await rangeRows(start, end);
+    const sales: Record<string, number> = {};
+    for (const [shopId, name] of Object.entries(SHOP_NAMES)) {
+      const value = valueOf(rows, "sales", name);
+      if (value != null) sales[shopId] = round(value);
+    }
+    return { ok: true as const, start, end, sales };
+  } catch {
+    return { ok: false as const, start, end, sales: {} };
+  }
+});

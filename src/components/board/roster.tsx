@@ -15,6 +15,7 @@ import {
   type WeekLog,
 } from "@/lib/board/model";
 import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
+import { pullMonthSales } from "@/lib/board/dashboard.functions";
 import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
 import { ManagerSnapshot } from "@/components/board/tech-view";
@@ -118,9 +119,7 @@ export function Roster() {
                     <p className="text-sm text-muted">
                       {tech.kind === "manager" ? home?.address : home?.name}
                     </p>
-                    {tech.kind === "manager" ? (
-                      <MonthSales weeks={weeks} managerId={tech.id} />
-                    ) : null}
+                    {tech.kind === "manager" ? <MonthSales shopId={tech.shopId} /> : null}
                   </div>
                   <div className="text-right">
                     <p className="font-display text-2xl leading-none font-semibold whitespace-nowrap tabular-nums">
@@ -223,18 +222,32 @@ function OwnerTools() {
   );
 }
 
-function MonthSales({ weeks, managerId }: { weeks: WeekLog[]; managerId: string }) {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const total = weeks.reduce((sum, week) => {
-    if (week.techId !== managerId || week.totalSales == null) return sum;
-    if (!week.weekStart.startsWith(stamp)) return sum;
-    return sum + week.totalSales;
-  }, 0);
-  if (total <= 0) return null;
+let monthSalesRequest: Promise<Record<string, number>> | null = null;
+
+function loadMonthSales() {
+  if (!monthSalesRequest) {
+    monthSalesRequest = pullMonthSales()
+      .then((result) => (result.ok ? result.sales : {}))
+      .catch(() => ({}));
+  }
+  return monthSalesRequest;
+}
+
+function MonthSales({ shopId }: { shopId: string }) {
+  const [total, setTotal] = useState<number | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    void loadMonthSales().then((sales) => {
+      if (!cancel) setTotal(sales[shopId] ?? null);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [shopId]);
+  if (total == null || total <= 0) return null;
   return (
     <p className="mt-3 text-sm text-ink">
-      <span className="text-muted">{format(now, "MMMM")} sales </span>
+      <span className="text-muted">{format(new Date(), "MMMM")} sales </span>
       <span className="font-display text-xl font-semibold tabular-nums">{formatMoney(total)}</span>
     </p>
   );
