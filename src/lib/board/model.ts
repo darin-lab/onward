@@ -119,6 +119,16 @@ export type PhoneCall = {
   sample?: boolean;
 };
 
+export type CashTransfer = {
+  id: string;
+  shopId: string;
+  managerId: string;
+  requested: number;
+  pickedUp: number | null;
+  requestedAt: string;
+  pickedUpAt: string | null;
+};
+
 export const LEVELS = [
   { score: 1, word: "Starting" },
   { score: 2, word: "Practicing" },

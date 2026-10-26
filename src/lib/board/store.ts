@@ -14,6 +14,7 @@ import {
   type DayReport,
   type PhoneAnswer,
   type PhoneCall,
+  type CashTransfer,
 } from "@/lib/board/model";
 
 type BoardState = {
@@ -23,6 +24,7 @@ type BoardState = {
   weeks: WeekLog[];
   dayReports: DayReport[];
   calls: PhoneCall[];
+  cashTransfers: CashTransfer[];
   lens: string;
   viewer: string;
   sampleCrew: boolean;
@@ -37,6 +39,8 @@ type BoardState = {
   upsertDayReport: (entry: DayReport) => void;
   addCall: (entry: PhoneCall) => void;
   answerCall: (id: string, answer: PhoneAnswer) => void;
+  requestCash: (entry: CashTransfer) => void;
+  recordPickup: (id: string, amount: number) => void;
   startWeek: (techId: string, weekStart: string) => void;
   restoreSample: () => void;
 };
@@ -57,6 +61,7 @@ export const useBoard = create<BoardState>()(
       lens: "owner",
       viewer: "guest",
       calls: [],
+      cashTransfers: [],
       setLens: (lens) => set({ lens }),
       setViewer: (viewer) => {
         const person = get().techs.find((tech) => tech.id === viewer);
@@ -144,6 +149,19 @@ export const useBoard = create<BoardState>()(
             return { ...call, answers, audio: "" };
           }),
         })),
+      requestCash: (entry) =>
+        set((state) => ({
+          cashTransfers: [...(state.cashTransfers ?? []).filter((item) => item.id !== entry.id), entry],
+          sampleCrew: false,
+        })),
+      recordPickup: (id, amount) =>
+        set((state) => ({
+          cashTransfers: (state.cashTransfers ?? []).map((item) =>
+            item.id === id && item.pickedUp == null
+              ? { ...item, pickedUp: amount, pickedUpAt: new Date().toISOString() }
+              : item,
+          ),
+        })),
       startWeek: (techId, weekStart) => {
         const state = get();
         const person = state.techs.find((tech) => tech.id === techId);
@@ -192,6 +210,7 @@ export const useBoard = create<BoardState>()(
           lens: "owner",
           dayReports: state.dayReports ?? [],
           calls: state.calls ?? [],
+          cashTransfers: state.cashTransfers ?? [],
         });
       },
       partialize: (state) => ({
@@ -201,6 +220,7 @@ export const useBoard = create<BoardState>()(
         weeks: state.weeks,
         dayReports: state.dayReports,
         calls: state.calls,
+        cashTransfers: state.cashTransfers,
         lens: state.lens,
         viewer: state.viewer,
         sampleCrew: state.sampleCrew,

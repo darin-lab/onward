@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
@@ -19,7 +19,8 @@ import { pullMonthSales } from "@/lib/board/dashboard.functions";
 import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
 import { ManagerSnapshot } from "@/components/board/tech-view";
-import { BrickPhone, CallComposer } from "@/components/board/phone-call";
+import { BrickPhone, CallComposer, CallReview, pendingCalls } from "@/components/board/phone-call";
+import { CashDesk, CashRequest, Bills } from "@/components/board/cash";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 
@@ -59,7 +60,6 @@ export function Roster() {
             Weekly feedback so you can see the progress and build on what is working.
           </p>
           <p className="mt-3 text-sm text-honey">Week of {weekRangeLabel(prior)}</p>
-          {isOwnerViewer(viewer) ? <OwnerTools /> : null}
         </>
       ) : (
         <>
@@ -175,50 +175,174 @@ export function Roster() {
   );
 }
 
-function OwnerTools() {
-  const [open, setOpen] = useState<"call" | "pins" | "emails" | "habits" | null>(null);
-  const pick = (next: "call" | "pins" | "emails" | "habits") =>
-    setOpen((current) => (current === next ? null : next));
-  const tool =
-    "inline-flex min-h-12 items-center rounded-md bg-raised px-4 font-display text-sm tracking-wide text-ink uppercase italic shadow-border";
+export function ToolsMenu() {
+  const viewer = useBoard((state) => state.viewer);
+  const techs = useBoard((state) => state.techs);
+  const shops = useBoard((state) => state.shops);
+  const calls = useBoard((state) => state.calls ?? []);
+  const person = techs.find((tech) => tech.id === viewer);
+  const owner = isOwnerViewer(viewer);
+  const manager = person?.kind === "manager" ? person : null;
+  const queue = manager ? pendingCalls(calls, manager.id) : [];
+  const [open, setOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [emptyNote, setEmptyNote] = useState(false);
+  const [panel, setPanel] = useState<"call" | "cash" | "pins" | "emails" | "habits" | null>(null);
+  if (!owner && !manager) return null;
+  const items = owner
+    ? ([
+        ["call", "Call reflection"],
+        ["cash", "Cash Transfer"],
+        ["pins", "Pin editor"],
+        ["emails", "Emails"],
+        ["habits", "Habits"],
+      ] as const)
+    : ([
+        ["call", "Call reflection"],
+        ["cash", "Cash Transfer"],
+      ] as const);
+  const waiting = queue[0];
+
   return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => pick("call")} className={cn(tool, "gap-3 px-3", open === "call" && "text-honey")}>
-          <BrickPhone />
-          Call reflection
+    <div className="relative text-left">
+      <span className="relative inline-flex">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className={cn(
+            "inline-flex min-h-12 items-center gap-2 rounded-md bg-raised px-3 font-display text-sm tracking-wide text-ink uppercase italic shadow-border",
+            open && "text-honey",
+          )}
+        >
+          <Toolbox />
+          Tools
         </button>
-        <button type="button" onClick={() => pick("pins")} className={cn(tool, open === "pins" && "text-honey")}>
-          Pin editor
-        </button>
-        <button type="button" onClick={() => pick("emails")} className={cn(tool, open === "emails" && "text-honey")}>
-          Emails
-        </button>
-        <button type="button" onClick={() => pick("habits")} className={cn(tool, open === "habits" && "text-honey")}>
-          Habits
-        </button>
-      </div>
-      {open === "call" ? (
-        <div className="mt-4">
-          <CallComposer />
+        {queue.length > 0 ? (
+          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-honey px-1 text-[10px] font-semibold text-white">
+            {queue.length}
+          </span>
+        ) : null}
+      </span>
+      {open ? (
+        <div className="absolute right-0 z-30 mt-2 w-max max-w-[min(100vw-2.5rem,16rem)] rounded-md bg-surface p-1 shadow-border">
+          {items.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={cn(
+                "flex items-center justify-end gap-2 rounded px-2 py-2 text-right font-display text-sm tracking-wide text-ink uppercase italic whitespace-nowrap",
+                (panel === id || (id === "call" && queue.length > 0)) && "text-honey",
+              )}
+              onClick={() => {
+                setOpen(false);
+                if (id === "call" && manager) {
+                  if (queue.length === 0) setEmptyNote(true);
+                  else setReviewing(true);
+                  return;
+                }
+                setPanel(id);
+              }}
+            >
+              {id === "call" ? <BrickPhone /> : null}
+              {id === "cash" ? <Bills /> : null}
+              {label}
+              {id === "call" && queue.length > 0 ? (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-honey px-1 text-[10px] font-semibold text-white">
+                  {queue.length}
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
       ) : null}
-      {open === "pins" ? (
-        <Card className="mt-4">
-          <PinList />
-        </Card>
+      {panel ? (
+        <ToolPopup
+          title={items.find(([id]) => id === panel)?.[1] ?? "Tools"}
+          onClose={() => setPanel(null)}
+        >
+          {panel === "call" && owner ? <CallComposer /> : null}
+          {panel === "cash" && owner ? <CashDesk /> : null}
+          {panel === "cash" && manager ? (
+            <CashRequest embedded managerId={manager.id} shopId={manager.shopId} />
+          ) : null}
+          {panel === "pins" ? (
+            <Card>
+              <PinList />
+            </Card>
+          ) : null}
+          {panel === "emails" ? <EmailList /> : null}
+          {panel === "habits" ? <CategoryEditor /> : null}
+        </ToolPopup>
       ) : null}
-      {open === "emails" ? (
-        <div className="mt-4">
-          <EmailList />
-        </div>
+      {reviewing && waiting && manager ? (
+        <CallReview
+          key={waiting.id}
+          call={waiting}
+          person={manager}
+          shopName={shops.find((shop) => shop.id === manager.shopId)?.name ?? manager.shopId}
+          index={1}
+          total={queue.length}
+          onDone={() => {
+            if (queue.length <= 1) setReviewing(false);
+          }}
+        />
       ) : null}
-      {open === "habits" ? (
-        <div className="mt-4">
-          <CategoryEditor />
+      {emptyNote ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xs rounded-md bg-surface px-6 py-5 text-center shadow-border">
+            <p className="font-display text-lg tracking-wide text-ink uppercase italic">
+              No call reflections today.
+            </p>
+            <button
+              type="button"
+              className="mt-4 font-display text-sm tracking-wide text-honey uppercase italic"
+              onClick={() => setEmptyNote(false)}
+            >
+              Close
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ToolPopup({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-auto bg-black/70 p-4 pt-16">
+      <div className="w-full max-w-lg rounded-md bg-canvas p-4 shadow-border">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="font-display text-lg tracking-wide text-ink uppercase italic">{title}</p>
+          <button
+            type="button"
+            className="font-display text-sm tracking-wide text-honey uppercase italic"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Toolbox() {
+  return (
+    <svg viewBox="0 0 36 28" className="h-5 w-7" aria-hidden="true">
+      <path d="M11 8 V6 a3 3 0 0 1 3-3 h8 a3 3 0 0 1 3 3 v2" fill="none" stroke="#f4f4f4" strokeWidth="1.6" />
+      <rect x="1" y="8" width="34" height="17" rx="2" fill="#8a1c16" stroke="#f4f4f4" strokeWidth="1" />
+      <rect x="14" y="12" width="8" height="5" rx="1" fill="#d7d7d7" />
+      <rect x="1" y="14" width="34" height="3" fill="#5c100c" />
+    </svg>
   );
 }
 

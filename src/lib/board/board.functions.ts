@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { Category, DayReport, PhoneCall, Shop, Tech, WeekLog } from "@/lib/board/model";
+import type { CashTransfer, Category, DayReport, PhoneCall, Shop, Tech, WeekLog } from "@/lib/board/model";
 
 export type BoardSnapshot = {
   shops: Shop[];
@@ -8,6 +8,7 @@ export type BoardSnapshot = {
   weeks: WeekLog[];
   dayReports: DayReport[];
   calls: PhoneCall[];
+  cashTransfers: CashTransfer[];
   sampleCrew: boolean;
   prelaunchCleared?: boolean;
 };
@@ -25,6 +26,7 @@ function asSnapshot(input: unknown): BoardSnapshot {
     weeks: data.weeks,
     dayReports: Array.isArray(data.dayReports) ? data.dayReports : [],
     calls: Array.isArray(data.calls) ? data.calls : [],
+    cashTransfers: Array.isArray(data.cashTransfers) ? data.cashTransfers : [],
     sampleCrew: Boolean(data.sampleCrew),
     prelaunchCleared: Boolean(data.prelaunchCleared),
   };
@@ -42,6 +44,15 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
   const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
   return asSnapshot(parsed);
 });
+
+function mergeCash(saved: CashTransfer[], incoming: CashTransfer[]) {
+  const byId = new Map(saved.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    const previous = byId.get(item.id);
+    if (!previous || (previous.pickedUp == null && item.pickedUp != null)) byId.set(item.id, item);
+  }
+  return [...byId.values()];
+}
 
 function mergeCalls(saved: PhoneCall[], incoming: PhoneCall[]) {
   const byId = new Map(saved.map((call) => [call.id, call]));
@@ -66,6 +77,7 @@ export const saveBoard = createServerFn({ method: "POST" })
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
       const saved = asSnapshot(parsed);
       data.calls = mergeCalls(saved.calls, data.calls);
+      data.cashTransfers = mergeCash(saved.cashTransfers, data.cashTransfers);
     }
     await sql.query(
       `insert into board_state (id, data, updated_at)

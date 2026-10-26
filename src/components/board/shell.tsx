@@ -4,7 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { pinSignIn, pinSignOut, pinStatus } from "@/lib/board/pin.functions";
 import { fieldClass } from "@/components/board/ui";
 import { useBoard } from "@/lib/board/store";
-import { CallBell } from "@/components/board/phone-call";
+import { CashBell } from "@/components/board/cash";
+import { ToolsMenu } from "@/components/board/roster";
 
 type Session = { personId: string; role: string; name: string };
 
@@ -37,7 +38,8 @@ export function Shell({ children }: { children: ReactNode }) {
               </Link>
               <div className="text-right">
                 <div className="flex items-center justify-end gap-3">
-                  <CallBell />
+                  <CashBell />
+                  <ToolsMenu />
                   <div>
                     <p className="text-sm text-ink">{session.name}</p>
                     <button

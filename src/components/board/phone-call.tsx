@@ -215,7 +215,7 @@ export function CallBell() {
 
 export function BrickPhone() {
   return (
-    <svg viewBox="0 0 36 56" className="h-12 w-8" aria-hidden="true">
+    <svg viewBox="0 0 36 56" className="h-8 w-5" aria-hidden="true">
       <path d="M18 1.5v7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M21 3.5l4-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <rect x="6" y="8" width="24" height="46" rx="5" fill="#18181b" stroke="currentColor" strokeWidth="1.6" />

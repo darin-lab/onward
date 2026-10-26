@@ -12,6 +12,7 @@ function snapshot(): BoardSnapshot {
     weeks: state.weeks,
     dayReports: state.dayReports,
     calls: state.calls ?? [],
+    cashTransfers: state.cashTransfers ?? [],
     sampleCrew: state.sampleCrew,
     prelaunchCleared: true,
   };
