@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { HabitChart, HoursChart } from "@/components/board/charts";
@@ -101,21 +101,17 @@ export function TechView({ tech }: { tech: Tech }) {
       );
       if (!current || current.submitted) return;
       const week = result.week;
-      const next = { ...current };
-      if (next.totalSales == null && week.totalSales != null) next.totalSales = week.totalSales;
-      if (next.sellThrough == null && week.sellThrough != null) next.sellThrough = week.sellThrough;
-      if (next.averageRepairOrder == null && week.averageRepairOrder != null) {
-        next.averageRepairOrder = week.averageRepairOrder;
-      }
-      if (next.hoursPerRepairOrder == null && week.hoursPerRepairOrder != null) {
-        next.hoursPerRepairOrder = week.hoursPerRepairOrder;
-      }
-      if (next.recsPerVehicle == null && week.recsPerVehicle != null) next.recsPerVehicle = week.recsPerVehicle;
-      if (next.salesPerBilledHour == null && week.salesPerBilledHour != null) {
-        next.salesPerBilledHour = week.salesPerBilledHour;
-      }
-      if (next.billedHours == null && week.billedHours != null) next.billedHours = week.billedHours;
-      if (next.cars == null && week.cars != null) next.cars = week.cars;
+      const next = {
+        ...current,
+        totalSales: week.totalSales ?? current.totalSales,
+        sellThrough: week.sellThrough ?? current.sellThrough,
+        averageRepairOrder: week.averageRepairOrder ?? current.averageRepairOrder,
+        hoursPerRepairOrder: week.hoursPerRepairOrder ?? current.hoursPerRepairOrder,
+        recsPerVehicle: week.recsPerVehicle ?? current.recsPerVehicle,
+        salesPerBilledHour: week.salesPerBilledHour ?? current.salesPerBilledHour,
+        billedHours: week.billedHours ?? current.billedHours,
+        cars: week.cars ?? current.cars,
+      };
       const same =
         next.totalSales === current.totalSales &&
         next.sellThrough === current.sellThrough &&
@@ -464,7 +460,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     },
     {
       id: "hours-per-ro",
-      label: "Hours per repair order",
+      label: "HPRO",
       value: week.hoursPerRepairOrder,
       max: 40,
       rank: ranks.hoursPerRepairOrder,
@@ -486,7 +482,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     },
     {
       id: "sales-per-hour",
-      label: "Sales per billed hour",
+      label: "SPBH",
       value: week.salesPerBilledHour,
       max: 2000,
       rank: ranks.salesPerBilledHour,
@@ -590,9 +586,9 @@ function ManagerArcs({ list, week }: { list: WeekLog[]; week: WeekLog }) {
     { key: "totalSales", title: "Total sales", format: formatMoney },
     { key: "sellThrough", title: "Sell through percentage", format: (value) => `${formatHours(value)}%` },
     { key: "averageRepairOrder", title: "ARO", format: formatMoney },
-    { key: "hoursPerRepairOrder", title: "Hours per repair order", format: formatHours },
+    { key: "hoursPerRepairOrder", title: "HPRO", format: formatHours },
     { key: "recsPerVehicle", title: "Recommendation per car", format: formatMoney },
-    { key: "salesPerBilledHour", title: "Sales per billed hour", format: formatMoney },
+    { key: "salesPerBilledHour", title: "SPBH", format: formatMoney },
     { key: "grossProfit", title: "Gross profit", format: formatMoney },
   ];
   const shown = metrics.filter((metric) => list.some((item) => item[metric.key] != null));
@@ -1263,6 +1259,11 @@ function DecimalField({
   met?: (n: number) => boolean;
 }) {
   const [text, setText] = useState(value == null ? "" : formatHours(value));
+  const focused = useRef(false);
+  useEffect(() => {
+    if (focused.current) return;
+    setText(value == null ? "" : formatHours(value));
+  }, [value]);
   return (
     <>
       {label ? (
@@ -1274,6 +1275,9 @@ function DecimalField({
         id={id}
         inputMode="decimal"
         value={text}
+        onFocus={() => {
+          focused.current = true;
+        }}
         onChange={(event) => {
           const nextText = event.target.value;
           setText(nextText);
@@ -1286,6 +1290,7 @@ function DecimalField({
           onCommit(Math.min(max, Math.max(0, Math.round(parsed * 100) / 100)));
         }}
         onBlur={() => {
+          focused.current = false;
           if (text.trim() === "") {
             onCommit(null);
             return;
