@@ -213,7 +213,7 @@ export function ToolsMenu() {
     ? ([
         ["call", "Call reflection"],
         ["cash", "Cash Transfer"],
-        ...(viewer === "darin" ? ([["receipts", "Receipts"]] as const) : []),
+        ["receipts", "Receipts"],
         ["pins", "Pin editor"],
         ["emails", "Emails"],
         ["habits", "Habits"],
@@ -221,6 +221,7 @@ export function ToolsMenu() {
     : ([
         ["call", "Call reflection"],
         ["cash", "Cash Transfer"],
+        ["receipts", "Receipts"],
       ] as const);
   const waiting = queue[0];
 

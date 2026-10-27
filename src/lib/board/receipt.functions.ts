@@ -66,8 +66,8 @@ export const addReceipt = createServerFn({ method: "POST" })
     return { total: Math.round(total * 100) / 100, note, image, imageType, imageName };
   })
   .handler(async ({ data }) => {
-    const { requireDarin } = await import("@/lib/board/darin.server");
-    const session = await requireDarin();
+    const { requireReceiptUser } = await import("@/lib/board/darin.server");
+    const session = await requireReceiptUser();
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     const id = crypto.randomUUID();
@@ -84,7 +84,7 @@ export const addReceipt = createServerFn({ method: "POST" })
         data.imageType,
         data.imageName,
         session.personId,
-        "darin@drivenautocare.com",
+        session.email,
         session.name,
         day,
       ],
@@ -93,15 +93,16 @@ export const addReceipt = createServerFn({ method: "POST" })
   });
 
 export const listReceipts = createServerFn({ method: "GET" }).handler(async () => {
-  const { requireDarin } = await import("@/lib/board/darin.server");
-  await requireDarin();
+  const { requireReceiptUser } = await import("@/lib/board/darin.server");
+  const session = await requireReceiptUser();
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<{ id: string; total: string | number; note: string; day: string; image_name: string | null }>(
     `select id, total, note, day, image_name
      from receipts
-     where mailed_at is null
+     where mailed_at is null and submitter_id = $1
      order by created_at desc`,
+    [session.personId],
   );
   return rows.map((row) => ({
     id: row.id,
@@ -174,23 +175,13 @@ export async function sendDueReceipts(now = new Date()) {
   const user = process.env.GMAIL_USER?.trim();
   const pass = process.env.GMAIL_APP_PASSWORD?.trim();
   if (!user || !pass) return { ok: false as const, sent: 0, reason: "not-configured" as const };
-  const people = [...new Set(rows.map((item) => item.submitter_email))];
-  const to = [...new Set([ACCOUNTING, ...people])];
-  const total = rows.reduce((sum, item) => sum + Number(item.total), 0);
-  const when = readableDay(clock.day);
-  const attachments = rows
-    .filter((item) => item.image_data)
-    .flatMap((item, index) => {
-      const filename = item.image_name || `receipt-${index + 1}`;
-      const content = Buffer.from(item.image_data ?? "", "base64");
-      const contentType = item.image_type || "application/octet-stream";
-      const file = { filename, content, contentType };
-      if (!contentType.startsWith("image/")) return [file];
-      return [
-        { ...file, cid: `receipt-${index}`, contentDisposition: "inline" as const },
-        { ...file, contentDisposition: "attachment" as const },
-      ];
-    });
+  const places = await receiptPlaces();
+  const groups = new Map<string, ReceiptRow[]>();
+  for (const row of rows) {
+    const list = groups.get(row.submitter_id) ?? [];
+    list.push(row);
+    groups.set(row.submitter_id, list);
+  }
   const nodemailer = await import("nodemailer");
   const transport = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -198,18 +189,60 @@ export async function sendDueReceipts(now = new Date()) {
     secure: true,
     auth: { user, pass },
   });
-  await transport.sendMail({
-    from: user,
-    to: to.join(", "),
-    subject: `Regional Manager - Receipts - ${clock.day.slice(5, 7)}-${clock.day.slice(8, 10)}-${clock.day.slice(0, 4)}`,
-    text: receiptText(when, rows, total),
-    html: receiptHtml(when, rows, total),
-    attachments,
-  });
-  for (const row of rows) {
-    await sql.query(`update receipts set mailed_at = now() where id = $1`, [row.id]);
+  const when = readableDay(clock.day);
+  const stamp = `${clock.day.slice(5, 7)}-${clock.day.slice(8, 10)}-${clock.day.slice(0, 4)}`;
+  let sent = 0;
+  for (const [personId, items] of groups) {
+    const place = places.get(personId) ?? "Shop";
+    const name = items[0]?.submitter_name ?? "Manager";
+    const email = items[0]?.submitter_email ?? "";
+    const to = [...new Set([ACCOUNTING, email].filter(Boolean))];
+    const total = items.reduce((sum, item) => sum + Number(item.total), 0);
+    const attachments = items
+      .filter((item) => item.image_data)
+      .flatMap((item, index) => {
+        const filename = item.image_name || `receipt-${index + 1}`;
+        const content = Buffer.from(item.image_data ?? "", "base64");
+        const contentType = item.image_type || "application/octet-stream";
+        const file = { filename, content, contentType };
+        if (!contentType.startsWith("image/")) return [file];
+        return [
+          { ...file, cid: `receipt-${index}`, contentDisposition: "inline" as const },
+          { ...file, contentDisposition: "attachment" as const },
+        ];
+      });
+    await transport.sendMail({
+      from: user,
+      to: to.join(", "),
+      subject: `Receipts - ${name} - ${place} - ${stamp}`,
+      text: receiptText(when, items, total),
+      html: receiptHtml(when, items, total),
+      attachments,
+    });
+    for (const row of items) {
+      await sql.query(`update receipts set mailed_at = now() where id = $1`, [row.id]);
+    }
+    sent += 1;
   }
-  return { ok: true as const, sent: 1 };
+  return { ok: true as const, sent };
+}
+
+async function receiptPlaces() {
+  const places = new Map<string, string>([
+    ["darin", "Region"],
+    ["arun", "CEO"],
+  ]);
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  const rows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
+  const raw = rows[0]?.data;
+  if (!raw) return places;
+  const board = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const shops = new Map<string, string>((board.shops ?? []).map((shop: { id: string; name: string }) => [shop.id, shop.name]));
+  for (const tech of board.techs ?? []) {
+    if (tech.kind === "manager") places.set(tech.id, shops.get(tech.shopId) ?? "Shop");
+  }
+  return places;
 }
 
 function receiptText(when: string, items: ReceiptRow[], total: number) {
