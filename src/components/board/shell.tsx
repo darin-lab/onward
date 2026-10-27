@@ -11,7 +11,6 @@ type Session = { personId: string; role: string; name: string };
 export function Shell({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [receiptMail, setReceiptMail] = useState(import.meta.env.DEV);
 
   useEffect(() => {
     void pinStatus()
@@ -25,8 +24,6 @@ export function Shell({ children }: { children: ReactNode }) {
       })
       .finally(() => setReady(true));
   }, []);
-
-  if (receiptMail) return <ReceiptSample onClose={() => setReceiptMail(false)} />;
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -71,64 +68,6 @@ export function Shell({ children }: { children: ReactNode }) {
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function ReceiptSample({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="min-h-screen bg-[#ece7df] text-[#1e1a16]" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-      <div className="mx-auto max-w-[640px] bg-white">
-        <div className="border-b border-[#e6e0d6] px-5 py-4" style={{ fontFamily: "Arial, sans-serif" }}>
-          <p className="text-lg font-bold">Regional Manager - Receipts - 10-27-2026</p>
-          <p className="mt-2 text-[13px] text-[#5c564e]">To: accounting@drivenautocare.com, darin@drivenautocare.com</p>
-        </div>
-        <div className="bg-[#f6f1e8] px-3 py-6">
-          <div className="mx-auto max-w-[560px] overflow-hidden rounded-xl border border-[#e6e0d6] bg-[#fffdf8]">
-            <div className="h-2 bg-[#c42230]" />
-            <div className="px-5 pt-5 pb-2">
-              <p className="text-[13px] tracking-[0.08em] text-[#5c564e] uppercase">Driven Auto Care</p>
-              <h1 className="mt-1 text-[28px] font-semibold">Receipts</h1>
-              <p className="mt-1 text-[15px] text-[#5c564e]">Tuesday, October 27, 2026</p>
-            </div>
-            <div className="px-5 pt-2 pb-5">
-              <SampleReceipt amount="$18.42" note="Shop towels and wipes" />
-              <SampleReceipt amount="$64.10" note="Lunch for the Campbell crew" />
-              <p className="mt-4 text-lg font-bold">Total $82.52</p>
-              <p className="mt-4 text-[13px] text-[#5c564e]">Attachments</p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                <Attachment name="receipt-1.jpg" />
-                <Attachment name="receipt-2.jpg" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="px-5 py-4 text-center">
-        <button type="button" className="text-sm text-[#5c564e] underline" onClick={onClose}>
-          Back to the app
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SampleReceipt({ amount, note }: { amount: string; note: string }) {
-  return (
-    <div className="border-b border-[#e6e0d6] py-3.5">
-      <p className="text-lg font-bold">{amount}</p>
-      <p className="mt-1.5 text-[15px] leading-snug">{note}</p>
-      <p className="mt-1.5 text-[13px] text-[#5c564e]">Darin Dinis</p>
-      <div className="mt-2.5 h-24 w-24 rounded-lg border border-[#e6e0d6] bg-[#efe8dc]" />
-    </div>
-  );
-}
-
-function Attachment({ name }: { name: string }) {
-  return (
-    <div className="w-28 overflow-hidden rounded-md border border-[#e6e0d6] bg-white" style={{ fontFamily: "Arial, sans-serif" }}>
-      <div className="h-16 bg-[#efe8dc]" />
-      <p className="truncate px-2 py-1 text-[11px] text-[#5c564e]">{name}</p>
     </div>
   );
 }
