@@ -49,6 +49,7 @@ export type WeekLog = {
   salesPerBilledHour: number | null;
   grossProfit: number | null;
   efficiency: number | null;
+  serviceHours: number | null;
   billedNote: string;
   carsNote: string;
   recsNote: string;
@@ -387,6 +388,7 @@ export function blankWeek(
     salesPerBilledHour: null,
     grossProfit: null,
     efficiency: null,
+    serviceHours: null,
     billedNote: "",
     carsNote: "",
     recsNote: "",

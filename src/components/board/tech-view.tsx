@@ -660,7 +660,18 @@ function WeekWork({
           label=""
           value={week.billedHours}
           max={80}
-          onCommit={(billedHours) => upsertWeek({ ...week, billedHours })}
+          onCommit={(billedHours) =>
+            upsertWeek({
+              ...week,
+              billedHours,
+              ...techFigures({
+                billedHours,
+                billedPerRo: week.hoursPerRepairOrder,
+                totalRecommendations: week.totalRecommendations ?? null,
+                serviceHours: week.serviceHours ?? null,
+              }),
+            })
+          }
           met={(n) => n >= 40}
         />
       ) : (
@@ -683,69 +694,113 @@ function WeekWork({
       ) : null}
       <div className="mt-5 grid grid-cols-2 gap-4">
         <div>
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm text-muted">Cars serviced</p>
-            <p className="text-xs text-muted">Goal 14</p>
-          </div>
+          <p className="text-sm text-muted">BH/RO</p>
           {writing ? (
             <DecimalField
-              key={`${week.weekStart}-cars`}
-              id="cars"
+              key={`${week.weekStart}-bhro`}
+              id="bhro"
               label=""
-              value={week.cars}
-              max={200}
-              onCommit={(cars) =>
+              value={week.hoursPerRepairOrder}
+              max={40}
+              onCommit={(billedPerRo) =>
                 upsertWeek({
                   ...week,
-                  cars,
-                  recsPerVehicle:
-                    week.totalRecommendations != null
-                      ? recsFromTotal(week.totalRecommendations, cars)
-                      : week.recsPerVehicle,
+                  hoursPerRepairOrder: billedPerRo,
+                  ...techFigures({
+                    billedHours: week.billedHours,
+                    billedPerRo,
+                    totalRecommendations: week.totalRecommendations ?? null,
+                    serviceHours: week.serviceHours ?? null,
+                  }),
                 })
               }
-              met={(n) => n >= 14}
             />
           ) : (
-            <p
-              className="mt-1 font-display text-3xl font-semibold tabular-nums"
-              style={{ color: goalColor(week.cars, (n) => n >= 14) }}
-            >
-              {week.cars == null ? "—" : formatHours(week.cars)}
+            <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
+              {week.hoursPerRepairOrder == null ? "—" : formatHours(week.hoursPerRepairOrder)}
             </p>
           )}
+        </div>
+        <div>
+          <p className="text-sm text-muted">Service hours</p>
+          {writing ? (
+            <DecimalField
+              key={`${week.weekStart}-service`}
+              id="service-hours"
+              label=""
+              value={week.serviceHours ?? null}
+              max={80}
+              onCommit={(serviceHours) =>
+                upsertWeek({
+                  ...week,
+                  serviceHours,
+                  ...techFigures({
+                    billedHours: week.billedHours,
+                    billedPerRo: week.hoursPerRepairOrder,
+                    totalRecommendations: week.totalRecommendations ?? null,
+                    serviceHours,
+                  }),
+                })
+              }
+            />
+          ) : (
+            <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
+              {week.serviceHours == null ? "—" : formatHours(week.serviceHours)}
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-sm text-muted">Total recommendations</p>
+          {writing ? (
+            <DecimalField
+              key={`${week.weekStart}-recs`}
+              id="recs"
+              label=""
+              value={week.totalRecommendations ?? null}
+              max={200000}
+              onCommit={(totalRecommendations) =>
+                upsertWeek({
+                  ...week,
+                  totalRecommendations,
+                  ...techFigures({
+                    billedHours: week.billedHours,
+                    billedPerRo: week.hoursPerRepairOrder,
+                    totalRecommendations,
+                    serviceHours: week.serviceHours ?? null,
+                  }),
+                })
+              }
+            />
+          ) : (
+            <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
+              {week.totalRecommendations == null ? "—" : formatMoney(week.totalRecommendations)}
+            </p>
+          )}
+        </div>
+        <div>
+          <div className="flex items-baseline gap-2">
+            <p className="text-sm text-muted">Cars</p>
+            <p className="text-xs text-muted">Goal 14</p>
+          </div>
+          <p
+            className="mt-1 font-display text-3xl font-semibold tabular-nums"
+            style={{ color: goalColor(week.cars, (n) => n >= 14) }}
+          >
+            {week.cars == null ? "—" : formatHours(week.cars)}
+          </p>
           <RankLine rank={ranks?.cars} total={ranks?.total} />
           {detail ? (
-          <MissNote
-            id="cars-why"
-            show={week.cars != null && week.cars < 14}
-            writing={writing}
-            value={week.carsNote ?? ""}
-            onChange={(carsNote) => upsertWeek({ ...week, carsNote })}
-          />
+            <MissNote
+              id="cars-why"
+              show={week.cars != null && week.cars < 14}
+              writing={writing}
+              value={week.carsNote ?? ""}
+              onChange={(carsNote) => upsertWeek({ ...week, carsNote })}
+            />
           ) : null}
         </div>
         <div>
-          {writing ? (
-            <>
-              <p className="text-sm text-muted">Total recommendations</p>
-              <DecimalField
-                key={`${week.weekStart}-recs`}
-                id="recs"
-                label=""
-                value={week.totalRecommendations ?? null}
-                max={200000}
-                onCommit={(totalRecommendations) =>
-                  upsertWeek({
-                    ...week,
-                    totalRecommendations,
-                    recsPerVehicle: recsFromTotal(totalRecommendations, week.cars),
-                  })
-                }
-              />
-            </>
-          ) : null}
-          <div className={cn("flex items-baseline gap-2", writing ? "mt-3" : "")}>
+          <div className="flex items-baseline gap-2">
             <p className="text-sm text-muted">Recommendations per vehicle</p>
             <p className="shrink-0 text-xs text-muted">Goal $2,500</p>
           </div>
@@ -757,47 +812,35 @@ function WeekWork({
           </p>
           <RankLine rank={ranks?.recsPerVehicle} total={ranks?.total} />
           {detail ? (
-          <MissNote
-            id="recs-why"
-            show={week.recsPerVehicle != null && week.recsPerVehicle < 2500}
-            writing={writing}
-            value={week.recsNote ?? ""}
-            onChange={(recsNote) => upsertWeek({ ...week, recsNote })}
-          />
+            <MissNote
+              id="recs-why"
+              show={week.recsPerVehicle != null && week.recsPerVehicle < 2500}
+              writing={writing}
+              value={week.recsNote ?? ""}
+              onChange={(recsNote) => upsertWeek({ ...week, recsNote })}
+            />
           ) : null}
         </div>
         <div>
-          <div className="flex items-baseline justify-between gap-2">
+          <div className="flex items-baseline gap-2">
             <p className="text-sm text-muted">Efficiency</p>
             <p className="shrink-0 text-xs text-muted">Goal 100–150%</p>
           </div>
-          {writing ? (
-            <DecimalField
-              key={`${week.weekStart}-eff`}
-              id="efficiency"
-              label=""
-              value={week.efficiency}
-              max={200}
-              onCommit={(efficiency) => upsertWeek({ ...week, efficiency })}
-              met={(n) => n >= 100 && n <= 150}
-            />
-          ) : (
-            <p
-              className="mt-1 font-display text-3xl font-semibold tabular-nums"
-              style={{ color: goalColor(week.efficiency, (n) => n >= 100 && n <= 150) }}
-            >
-              {week.efficiency == null ? "—" : `${formatHours(week.efficiency)}%`}
-            </p>
-          )}
+          <p
+            className="mt-1 font-display text-3xl font-semibold tabular-nums"
+            style={{ color: goalColor(week.efficiency, (n) => n >= 100 && n <= 150) }}
+          >
+            {week.efficiency == null ? "—" : `${formatHours(week.efficiency)}%`}
+          </p>
           <RankLine rank={ranks?.efficiency} total={ranks?.total} />
           {detail ? (
-          <MissNote
-            id="eff-why"
-            show={week.efficiency != null && (week.efficiency < 100 || week.efficiency > 150)}
-            writing={writing}
-            value={week.efficiencyNote ?? ""}
-            onChange={(efficiencyNote) => upsertWeek({ ...week, efficiencyNote })}
-          />
+            <MissNote
+              id="eff-why"
+              show={week.efficiency != null && (week.efficiency < 100 || week.efficiency > 150)}
+              writing={writing}
+              value={week.efficiencyNote ?? ""}
+              onChange={(efficiencyNote) => upsertWeek({ ...week, efficiencyNote })}
+            />
           ) : null}
         </div>
       </div>
@@ -1279,6 +1322,27 @@ function goalColor(value: number | null, met: (n: number) => boolean) {
 function recsFromTotal(total: number | null, cars: number | null) {
   if (total == null || cars == null || cars <= 0) return null;
   return Math.round((total / cars) * 100) / 100;
+}
+
+function techFigures(input: {
+  billedHours: number | null;
+  billedPerRo: number | null;
+  totalRecommendations: number | null;
+  serviceHours: number | null;
+}) {
+  const cars =
+    input.billedHours != null && input.billedPerRo != null && input.billedPerRo > 0
+      ? Math.round((input.billedHours / input.billedPerRo) * 100) / 100
+      : null;
+  const efficiency =
+    input.billedHours != null && input.serviceHours != null && input.serviceHours > 0
+      ? Math.round((input.billedHours / input.serviceHours) * 1000) / 10
+      : null;
+  return {
+    cars,
+    recsPerVehicle: recsFromTotal(input.totalRecommendations, cars),
+    efficiency,
+  };
 }
 
 function DecimalField({
