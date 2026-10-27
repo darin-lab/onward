@@ -151,12 +151,15 @@ export const pullMonthSales = createServerFn({ method: "GET" }).handler(async ()
   try {
     const rows = await rangeRows(start, end);
     const sales: Record<string, number> = {};
+    const cars: Record<string, number> = {};
     for (const [shopId, name] of Object.entries(SHOP_NAMES)) {
       const value = valueOf(rows, "sales", name);
       if (value != null) sales[shopId] = round(value);
+      const count = valueOf(rows, "cars", name);
+      if (count != null) cars[shopId] = round(count, 0);
     }
-    return { ok: true as const, start, end, sales };
+    return { ok: true as const, start, end, sales, cars };
   } catch {
-    return { ok: false as const, start, end, sales: {} };
+    return { ok: false as const, start, end, sales: {}, cars: {} };
   }
 });

@@ -511,28 +511,62 @@ export function managerRanks(techs: Tech[], weeks: WeekLog[], weekStart: string,
   };
 }
 
+export function monthKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  return `${year}-${month}`;
+}
+
+export function monthWeeks(weeks: WeekLog[], techId: string, now = new Date()) {
+  const prefix = monthKey(now);
+  return weeksFor(weeks, techId).filter((week) => week.weekStart.startsWith(prefix));
+}
+
+export function monthBilledHours(weeks: WeekLog[], techId: string, now = new Date()) {
+  const entered = monthWeeks(weeks, techId, now).filter((week) => week.billedHours != null);
+  if (entered.length === 0) return null;
+  const sum = entered.reduce((total, week) => total + (week.billedHours ?? 0), 0);
+  return Math.round(sum * 100) / 100;
+}
+
+export function monthRecsPerVehicle(weeks: WeekLog[], techId: string, now = new Date()) {
+  const entered = monthWeeks(weeks, techId, now).filter((week) => week.recsPerVehicle != null);
+  if (entered.length === 0) return null;
+  const withCars = entered.filter((week) => (week.cars ?? 0) > 0);
+  if (withCars.length > 0) {
+    const cars = withCars.reduce((total, week) => total + (week.cars ?? 0), 0);
+    const dollars = withCars.reduce(
+      (total, week) => total + (week.recsPerVehicle ?? 0) * (week.cars ?? 0),
+      0,
+    );
+    if (cars > 0) return Math.round((dollars / cars) * 100) / 100;
+  }
+  const average = entered.reduce((total, week) => total + (week.recsPerVehicle ?? 0), 0) / entered.length;
+  return Math.round(average * 100) / 100;
+}
+
 export function companyPoll(techs: Tech[], weeks: WeekLog[]): PollRow[] {
   const rows: PollRow[] = techs
     .filter((person) => person.kind === "technician")
     .map((tech) => {
-      const latest = featuredWeek(weeks, tech.id);
       return {
         tech,
         record: recordOf(weeksFor(weeks, tech.id)),
         rank: null,
-        billed: latest?.billedHours ?? null,
+        billed: monthBilledHours(weeks, tech.id),
       };
     });
-  const weekStart = priorWeekISO();
-  const ready = reviewsReady(techs, weeks, weekStart);
   const ranked = rows
     .filter((row) => row.billed != null)
     .sort((a, b) => (b.billed ?? 0) - (a.billed ?? 0) || a.tech.name.localeCompare(b.tech.name));
-  if (ready) {
-    ranked.forEach((row, index) => {
-      row.rank = index + 1;
-    });
-  }
+  ranked.forEach((row, index) => {
+    row.rank = index + 1;
+  });
   const waiting = rows
     .filter((row) => row.billed == null)
     .sort((a, b) => a.tech.name.localeCompare(b.tech.name));

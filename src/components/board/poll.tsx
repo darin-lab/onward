@@ -1,10 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import {
   companyPoll,
-  featuredWeek,
   formatHours,
   formatMoney,
   formatRecord,
+  monthRecsPerVehicle,
   type Tech,
   type WeekLog,
 } from "@/lib/board/model";
@@ -30,7 +30,7 @@ export function CompanyPoll({
       <h2 className="text-2xl">Leaderboard</h2>
       <div className="mt-4 grid gap-8 sm:grid-cols-2">
       <Board
-        metric="Billed hours"
+        metric="Billed hours this month"
         rows={billed.map((row) => ({
           tech: row.tech,
           rank: row.rank,
@@ -42,7 +42,7 @@ export function CompanyPoll({
         highlightId={highlightId}
       />
       <Board
-        metric="Recommendations per vehicle"
+        metric="Recommendations per vehicle this month"
         rows={recs}
         shops={shops}
         highlightId={highlightId}
@@ -56,10 +56,10 @@ function recommendationsBoard(techs: Tech[], weeks: WeekLog[]) {
   const rows = techs
     .filter((person) => person.kind === "technician")
     .map((tech) => {
-      const latest = featuredWeek(weeks, tech.id);
+      const amount = monthRecsPerVehicle(weeks, tech.id);
       return {
         tech,
-        amount: latest?.recsPerVehicle ?? null,
+        amount,
         record: formatRecord(
           companyPoll(techs, weeks).find((row) => row.tech.id === tech.id)?.record ?? {
             wins: 0,

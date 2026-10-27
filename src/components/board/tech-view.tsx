@@ -239,17 +239,13 @@ export function ManagerSnapshot({
 }) {
   const week = featuredWeek(weeks, tech.id);
   return (
-    <div className="mt-4 text-center">
-      <p className="text-base text-ink">{tech.name}</p>
-      <p className="text-sm text-muted">{tech.role}</p>
-      {week?.sellThrough != null ? (
-        <p className="mt-2 text-sm tabular-nums text-ink">{formatHours(week.sellThrough)}% sell through</p>
-      ) : null}
-      {week?.averageRepairOrder != null ? (
-        <p className="text-sm tabular-nums text-ink">
-          {formatMoney(week.averageRepairOrder)} ARO
-        </p>
-      ) : null}
+    <div className="text-center">
+      <p className="mt-3 text-base text-ink">{tech.name}</p>
+      <p className="mt-1 text-sm text-muted">{tech.role}</p>
+      <div className="mt-3 space-y-1 text-sm tabular-nums text-ink">
+        <p>{week?.sellThrough == null ? "—" : `${formatHours(week.sellThrough)}% sell through`}</p>
+        <p>{week?.averageRepairOrder == null ? "—" : `${formatMoney(week.averageRepairOrder)} ARO`}</p>
+      </div>
     </div>
   );
 }

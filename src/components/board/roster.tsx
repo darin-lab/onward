@@ -36,6 +36,16 @@ export function Roster() {
   const shop = shops.find((item) => item.id === lens);
   const manager = techs.find((person) => person.shopId === lens && person.kind === "manager");
   const looking = techs.find((person) => person.id === viewer);
+  const [monthCars, setMonthCars] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let cancel = false;
+    void loadMonthSales().then((result) => {
+      if (!cancel) setMonthCars(result.cars);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
   if (looking?.kind === "technician") {
     return <Navigate to="/t/$techId" params={{ techId: looking.id }} />;
   }
@@ -94,6 +104,9 @@ export function Roster() {
           const week = featuredWeek(weeks, tech.id);
           const home = shops.find((item) => item.id === tech.shopId);
           const crewRecord = shopRecord(techs, weeks, tech.shopId);
+          const monthCount = monthCars[tech.shopId];
+          const shopLine =
+            monthCount == null ? crewRecord : { ...crewRecord, wins: monthCount };
           const standing = companyPoll(techs, weeks).find((row) => row.tech.id === tech.id);
           const billed = week?.billedHours;
           return (
@@ -119,12 +132,11 @@ export function Roster() {
                     <p className="text-sm text-muted">
                       {tech.kind === "manager" ? home?.address : home?.name}
                     </p>
-                    {tech.kind === "manager" ? <MonthSales shopId={tech.shopId} /> : null}
                   </div>
                   <div className="text-right">
                     <p className="font-display text-2xl leading-none font-semibold whitespace-nowrap tabular-nums">
                       {tech.kind === "manager"
-                        ? formatRecord(crewRecord)
+                        ? formatRecord(shopLine)
                         : billed != null
                           ? formatHours(billed)
                           : "—"}
@@ -135,7 +147,10 @@ export function Roster() {
                   </div>
                 </div>
                 {tech.kind === "manager" ? (
-                  <ManagerSnapshot tech={tech} weeks={weeks} />
+                  <div className="mt-4 text-center">
+                    <MonthSales shopId={tech.shopId} />
+                    <ManagerSnapshot tech={tech} weeks={weeks} />
+                  </div>
                 ) : null}
                 </Link>
                 {tech.kind === "technician" && week ? (
@@ -346,13 +361,14 @@ function Toolbox() {
   );
 }
 
-let monthSalesRequest: Promise<Record<string, number>> | null = null;
+let monthSalesRequest: Promise<{ sales: Record<string, number>; cars: Record<string, number> }> | null =
+  null;
 
 function loadMonthSales() {
   if (!monthSalesRequest) {
     monthSalesRequest = pullMonthSales()
-      .then((result) => (result.ok ? result.sales : {}))
-      .catch(() => ({}));
+      .then((result) => (result.ok ? { sales: result.sales, cars: result.cars } : { sales: {}, cars: {} }))
+      .catch(() => ({ sales: {}, cars: {} }));
   }
   return monthSalesRequest;
 }
@@ -361,18 +377,19 @@ function MonthSales({ shopId }: { shopId: string }) {
   const [total, setTotal] = useState<number | null>(null);
   useEffect(() => {
     let cancel = false;
-    void loadMonthSales().then((sales) => {
-      if (!cancel) setTotal(sales[shopId] ?? null);
+    void loadMonthSales().then((result) => {
+      if (!cancel) setTotal(result.sales[shopId] ?? null);
     });
     return () => {
       cancel = true;
     };
   }, [shopId]);
-  if (total == null || total <= 0) return null;
   return (
-    <p className="mt-3 text-sm text-ink">
-      <span className="text-muted">{format(new Date(), "MMMM")} sales </span>
-      <span className="font-display text-xl font-semibold tabular-nums">{formatMoney(total)}</span>
+    <p className="min-h-12 text-center text-sm text-ink">
+      <span className="block text-muted">{format(new Date(), "MMMM")} Sales</span>
+      <span className="mt-1 block font-display text-xl font-semibold tabular-nums">
+        {total == null || total <= 0 ? "—" : formatMoney(total)}
+      </span>
     </p>
   );
 }
