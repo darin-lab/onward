@@ -4,27 +4,27 @@ export const seedShops: Shop[] = [
   {
     id: "fremont",
     name: "Fremont",
-    address: "40931 Albrae St, Fremont, CA 94538",
+    address: "40931 Albrae St",
   },
   {
     id: "campbell",
     name: "Campbell",
-    address: "335 E McGlincy Ln #3, Campbell, CA 95008",
+    address: "335 E McGlincy Ln #3",
   },
   {
     id: "san-ramon",
     name: "San Ramon",
-    address: "12831 Alcosta Blvd B, San Ramon, CA 94583",
+    address: "12831 Alcosta Blvd B",
   },
   {
     id: "san-jose",
     name: "San Jose",
-    address: "297 E Taylor St, San Jose, CA 95112",
+    address: "297 E Taylor St",
   },
   {
     id: "castro-valley",
     name: "Castro Valley",
-    address: "2769 Castro Valley Blvd, Castro Valley, CA 94546",
+    address: "2769 Castro Valley Blvd",
   },
 ];
 

@@ -225,7 +225,7 @@ export const useBoard = create<BoardState>()(
           })),
           shops: state.shops.map((shop) => ({
             ...shop,
-            address: shop.address || known.get(shop.id) || "",
+            address: known.get(shop.id) || shop.address,
           })),
           categories: seedCategories,
           viewer: "guest",

@@ -1,6 +1,6 @@
 import { loadBoard, saveBoard, type BoardSnapshot } from "@/lib/board/board.functions";
 import { sampleReflections } from "@/components/board/phone-call";
-import { seedCategories } from "@/lib/board/seed";
+import { seedCategories, seedShops } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
 
 function snapshot(): BoardSnapshot {
@@ -104,13 +104,19 @@ async function connect() {
       const previous = rest.categories[index];
       return category.name !== previous?.name || category.hint !== previous?.hint;
     });
+    const shops = rest.shops.map((shop) => {
+      const known = seedShops.find((item) => item.id === shop.id);
+      return known ? { ...shop, address: known.address } : shop;
+    });
+    const addressChanged = shops.some((shop, index) => shop.address !== rest.shops[index]?.address);
     useBoard.setState({
       ...rest,
+      shops,
       techs: roster,
       categories,
       weeks,
     });
-    if (clearWeeks || changed || habitsChanged) {
+    if (clearWeeks || changed || habitsChanged || addressChanged) {
       await saveBoard({ data: snapshot() });
     }
   } else {
