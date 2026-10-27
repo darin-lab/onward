@@ -177,12 +177,17 @@ export async function sendDueReceipts(now = new Date()) {
   const when = readableDay(clock.day);
   const attachments = rows
     .filter((item) => item.image_data)
-    .map((item, index) => ({
-      filename: item.image_name || `receipt-${index + 1}`,
-      content: Buffer.from(item.image_data ?? "", "base64"),
-      contentType: item.image_type || "application/octet-stream",
-      cid: `receipt-${index}`,
-    }));
+    .flatMap((item, index) => {
+      const filename = item.image_name || `receipt-${index + 1}`;
+      const content = Buffer.from(item.image_data ?? "", "base64");
+      const contentType = item.image_type || "application/octet-stream";
+      const file = { filename, content, contentType };
+      if (!contentType.startsWith("image/")) return [file];
+      return [
+        { ...file, cid: `receipt-${index}`, contentDisposition: "inline" as const },
+        { ...file, contentDisposition: "attachment" as const },
+      ];
+    });
   const nodemailer = await import("nodemailer");
   const transport = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -193,7 +198,7 @@ export async function sendDueReceipts(now = new Date()) {
   await transport.sendMail({
     from: user,
     to: to.join(", "),
-    subject: `Receipts — ${clock.day}`,
+    subject: `Regional Manager - Receipts - ${clock.day.slice(5, 7)}-${clock.day.slice(8, 10)}-${clock.day.slice(0, 4)}`,
     text: receiptText(when, rows, total),
     html: receiptHtml(when, rows, total),
     attachments,
@@ -214,7 +219,7 @@ function receiptHtml(when: string, items: ReceiptRow[], total: number) {
     .map((item, index) => {
       const image =
         item.image_type?.startsWith("image/")
-          ? `<img src="cid:receipt-${index}" alt="" style="display:block;max-width:100%;margin-top:10px;border-radius:8px;" />`
+          ? `<img src="cid:receipt-${index}" alt="" width="120" style="display:block;width:120px;max-width:120px;height:auto;margin-top:10px;border-radius:8px;" />`
           : item.image_name
             ? `<p style="margin:8px 0 0;font-size:13px;color:#5c564e;">Attached: ${escapeHtml(item.image_name)}</p>`
             : "";
@@ -238,7 +243,7 @@ function receiptHtml(when: string, items: ReceiptRow[], total: number) {
             <tr><td style="background:#c42230;height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>
             <tr>
               <td style="padding:22px 22px 8px;">
-                <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#5c564e;">Driven Onward</p>
+                <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#5c564e;">Driven Auto Care</p>
                 <h1 style="margin:6px 0 0;font-size:28px;font-weight:600;">Receipts</h1>
                 <p style="margin:6px 0 0;font-size:15px;color:#5c564e;">${escapeHtml(when)}</p>
               </td>
