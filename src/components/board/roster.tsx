@@ -20,9 +20,14 @@ import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
 import { ManagerSnapshot } from "@/components/board/tech-view";
 import { BrickPhone, CallComposer, CallReview, pendingCalls } from "@/components/board/phone-call";
-import { CashDesk, CashRequest, Bills } from "@/components/board/cash";
+import { CashPanel, Bills } from "@/components/board/cash";
+import { ReceiptDesk, ReceiptMark } from "@/components/board/receipts";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
+
+function streetOnly(address: string) {
+  return address.split(",")[0]?.trim() || address;
+}
 
 export function Roster() {
   const techs = useBoard((state) => state.techs);
@@ -130,7 +135,7 @@ export function Roster() {
                       ) : null}
                     </h2>
                     <p className="text-sm text-muted">
-                      {tech.kind === "manager" ? home?.address : home?.name}
+                      {tech.kind === "manager" ? streetOnly(home?.address ?? "") : home?.name}
                     </p>
                   </div>
                   <div className="text-right">
@@ -202,12 +207,13 @@ export function ToolsMenu() {
   const [open, setOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [emptyNote, setEmptyNote] = useState(false);
-  const [panel, setPanel] = useState<"call" | "cash" | "pins" | "emails" | "habits" | null>(null);
+  const [panel, setPanel] = useState<"call" | "cash" | "pins" | "emails" | "habits" | "receipts" | null>(null);
   if (!owner && !manager) return null;
   const items = owner
     ? ([
         ["call", "Call reflection"],
         ["cash", "Cash Transfer"],
+        ...(viewer === "darin" ? ([["receipts", "Receipts"]] as const) : []),
         ["pins", "Pin editor"],
         ["emails", "Emails"],
         ["habits", "Habits"],
@@ -260,6 +266,8 @@ export function ToolsMenu() {
             >
               {id === "call" ? <BrickPhone /> : null}
               {id === "cash" ? <Bills /> : null}
+              {id === "receipts" ? <ReceiptMark /> : null}
+              {id === "pins" || id === "emails" || id === "habits" ? <span aria-hidden="true">•</span> : null}
               {label}
               {id === "call" && queue.length > 0 ? (
                 <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-honey px-1 text-[10px] font-semibold text-white">
@@ -276,9 +284,12 @@ export function ToolsMenu() {
           onClose={() => setPanel(null)}
         >
           {panel === "call" && owner ? <CallComposer /> : null}
-          {panel === "cash" && owner ? <CashDesk /> : null}
-          {panel === "cash" && manager ? (
-            <CashRequest embedded managerId={manager.id} shopId={manager.shopId} />
+          {panel === "cash" ? (
+            <CashPanel
+              owner={owner}
+              managerId={owner ? viewer : manager?.id ?? ""}
+              shopId={manager?.shopId ?? shops[0]?.id ?? ""}
+            />
           ) : null}
           {panel === "pins" ? (
             <Card>
@@ -287,6 +298,7 @@ export function ToolsMenu() {
           ) : null}
           {panel === "emails" ? <EmailList /> : null}
           {panel === "habits" ? <CategoryEditor /> : null}
+          {panel === "receipts" ? <ReceiptDesk /> : null}
         </ToolPopup>
       ) : null}
       {reviewing && waiting && manager ? (

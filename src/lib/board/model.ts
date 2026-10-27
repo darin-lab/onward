@@ -123,10 +123,13 @@ export type CashTransfer = {
   id: string;
   shopId: string;
   managerId: string;
+  kind?: "pickup" | "dropoff";
   requested: number;
   pickedUp: number | null;
   requestedAt: string;
   pickedUpAt: string | null;
+  revisedAt?: string | null;
+  deletedAt?: string | null;
 };
 
 export const LEVELS = [
@@ -149,7 +152,7 @@ export function peopleInLens(techs: Tech[], lens: string) {
 }
 
 export function isOwnerViewer(viewer: string) {
-  return viewer === "owner" || isOwnerEmail(viewer);
+  return viewer === "owner" || viewer === "darin" || viewer === "arun" || isOwnerEmail(viewer);
 }
 
 export function canReview(viewer: string, person: Tech, techs: Tech[]) {

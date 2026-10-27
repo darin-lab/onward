@@ -69,11 +69,29 @@ async function connect() {
       }
       return next;
     });
+    const named = techs.filter((tech) => tech.id !== "andre" && tech.name !== "Andre Pastores");
+    const roster = named.some((tech) => tech.id === "duy")
+      ? named
+      : [
+          ...named,
+          {
+            id: "duy",
+            name: "Duy Nguyen",
+            role: "Technician",
+            email: "",
+            kind: "technician" as const,
+            shopId: "campbell",
+          },
+        ];
     const clearWeeks = !prelaunchCleared;
-    const changed = techs.some((tech, index) => {
-      const previous = rest.techs[index];
-      return tech.name !== previous?.name || tech.email !== (previous?.email ?? "");
-    });
+    const weeks = (clearWeeks ? [] : rest.weeks).filter((week) => week.techId !== "andre");
+    const changed =
+      roster.length !== rest.techs.length ||
+      roster.some((tech, index) => {
+        const previous = rest.techs[index];
+        return tech.id !== previous?.id || tech.name !== previous?.name || tech.email !== (previous?.email ?? "");
+      }) ||
+      weeks.length !== (clearWeeks ? 0 : rest.weeks.length);
     const categories = rest.categories.map((category) => {
       if (category.kind !== "manager") return category;
       const seed = seedCategories.find((item) => item.id === category.id);
@@ -88,9 +106,9 @@ async function connect() {
     });
     useBoard.setState({
       ...rest,
-      techs,
+      techs: roster,
       categories,
-      weeks: clearWeeks ? [] : rest.weeks,
+      weeks,
     });
     if (clearWeeks || changed || habitsChanged) {
       await saveBoard({ data: snapshot() });

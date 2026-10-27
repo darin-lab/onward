@@ -49,7 +49,22 @@ function mergeCash(saved: CashTransfer[], incoming: CashTransfer[]) {
   const byId = new Map(saved.map((item) => [item.id, item]));
   for (const item of incoming) {
     const previous = byId.get(item.id);
-    if (!previous || (previous.pickedUp == null && item.pickedUp != null)) byId.set(item.id, item);
+    if (!previous) {
+      byId.set(item.id, item);
+      continue;
+    }
+    if (item.deletedAt) {
+      byId.set(item.id, { ...previous, deletedAt: item.deletedAt });
+      continue;
+    }
+    if (previous.deletedAt) continue;
+    const incomingEdit = item.revisedAt ?? "";
+    const savedEdit = previous.revisedAt ?? "";
+    if (incomingEdit && incomingEdit >= savedEdit) {
+      byId.set(item.id, item);
+      continue;
+    }
+    if (previous.pickedUp == null && item.pickedUp != null) byId.set(item.id, item);
   }
   return [...byId.values()];
 }

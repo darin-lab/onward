@@ -102,7 +102,7 @@ const seedPeople: SeedPerson[] = [
   { id: "nathan", name: "Nathan Licayan", role: "Technician", kind: "technician", shopId: "fremont", serviceHours: 14.71, billedHours: 10.3 },
   { id: "jeremiah", name: "Jeremiah Cronk", role: "Technician", kind: "technician", shopId: "fremont", serviceHours: 9.06, billedHours: 11.25 },
   { id: "edgar", name: "Edgar Carmona", role: "Technician", kind: "technician", shopId: "campbell", serviceHours: 9.73, billedHours: 7.65 },
-  { id: "andre", name: "Andre Pastores", role: "Technician", kind: "technician", shopId: "campbell", serviceHours: 8.96, billedHours: 6.8 },
+  { id: "duy", name: "Duy Nguyen", role: "Technician", kind: "technician", shopId: "campbell", serviceHours: 0, billedHours: 0 },
   { id: "duc", name: "Duc Nguyen", role: "Technician", kind: "technician", shopId: "san-jose", serviceHours: 17.49, billedHours: 16.55 },
 ];
 

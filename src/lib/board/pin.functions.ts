@@ -16,7 +16,7 @@ const assignedPins: Record<string, string> = {
   nathan: "6520",
   jeremiah: "4073",
   edgar: "8901",
-  andre: "2758",
+  duy: "5186",
   duc: "6392",
 };
 

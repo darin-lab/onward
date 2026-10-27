@@ -41,6 +41,8 @@ type BoardState = {
   answerCall: (id: string, answer: PhoneAnswer) => void;
   requestCash: (entry: CashTransfer) => void;
   recordPickup: (id: string, amount: number) => void;
+  updateCash: (id: string, requested: number, pickedUp: number | null) => void;
+  deleteCash: (id: string) => void;
   startWeek: (techId: string, weekStart: string) => void;
   restoreSample: () => void;
 };
@@ -160,6 +162,26 @@ export const useBoard = create<BoardState>()(
             item.id === id && item.pickedUp == null
               ? { ...item, pickedUp: amount, pickedUpAt: new Date().toISOString() }
               : item,
+          ),
+        })),
+      updateCash: (id, requested, pickedUp) =>
+        set((state) => ({
+          cashTransfers: (state.cashTransfers ?? []).map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  requested,
+                  pickedUp,
+                  pickedUpAt: pickedUp == null ? null : item.pickedUpAt ?? new Date().toISOString(),
+                  revisedAt: new Date().toISOString(),
+                }
+              : item,
+          ),
+        })),
+      deleteCash: (id) =>
+        set((state) => ({
+          cashTransfers: (state.cashTransfers ?? []).map((item) =>
+            item.id === id ? { ...item, deletedAt: new Date().toISOString() } : item,
           ),
         })),
       startWeek: (techId, weekStart) => {

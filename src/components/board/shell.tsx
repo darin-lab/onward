@@ -4,7 +4,6 @@ import { Link } from "@tanstack/react-router";
 import { pinSignIn, pinSignOut, pinStatus } from "@/lib/board/pin.functions";
 import { fieldClass } from "@/components/board/ui";
 import { useBoard } from "@/lib/board/store";
-import { CashBell } from "@/components/board/cash";
 import { ToolsMenu } from "@/components/board/roster";
 
 type Session = { personId: string; role: string; name: string };
@@ -38,7 +37,6 @@ export function Shell({ children }: { children: ReactNode }) {
               </Link>
               <div className="text-right">
                 <div className="flex items-center justify-end gap-3">
-                  <CashBell />
                   <ToolsMenu />
                   <div>
                     <p className="text-sm text-ink">{session.name}</p>
@@ -86,7 +84,7 @@ function applySession(session: { personId: string; role: string } | null) {
     return;
   }
   if (session.role === "owner") {
-    useBoard.setState({ viewer: "owner", lens: "owner" });
+    useBoard.setState({ viewer: session.personId, lens: "owner" });
     return;
   }
   useBoard.getState().setViewer(session.personId);

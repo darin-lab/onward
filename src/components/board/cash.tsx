@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Button, Card, fieldClass } from "@/components/board/ui";
-import { formatMoney, isOwnerViewer, type CashTransfer } from "@/lib/board/model";
+import { Button, fieldClass } from "@/components/board/ui";
+import { formatMoney } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { cn } from "@/lib/cn";
 
@@ -25,130 +25,146 @@ export function Bills() {
   );
 }
 
-export function CashRequest({
+export function CashPanel({
+  owner,
   managerId,
   shopId,
-  embedded = false,
 }: {
+  owner: boolean;
   managerId: string;
   shopId: string;
-  embedded?: boolean;
 }) {
   const requestCash = useBoard((state) => state.requestCash);
+  const updateCash = useBoard((state) => state.updateCash);
+  const deleteCash = useBoard((state) => state.deleteCash);
   const transfers = useBoard((state) => state.cashTransfers ?? []);
   const shops = useBoard((state) => state.shops);
-  const [open, setOpen] = useState(embedded);
+  const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-  const shop = shops.find((item) => item.id === shopId);
-  const mine = transfers
-    .filter((item) => item.managerId === managerId)
-    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  const [place, setPlace] = useState(shopId);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [picked, setPicked] = useState("");
   const ready = readAmount(amount);
-  const form = (
-    <Card className={embedded ? "mt-2" : "mt-4"}>
-      <label className="block text-sm text-ink" htmlFor="cash-request">
-        How much cash needs to be picked up?
-        <input
-          id="cash-request"
-          inputMode="decimal"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          className={cn(fieldClass, "mt-2")}
-        />
-      </label>
-      <Button
-        className="mt-4"
-        disabled={!ready}
-        onClick={() => {
-          if (!ready) return;
-          requestCash({
-            id: `cash-${Date.now()}`,
-            shopId,
-            managerId,
-            requested: ready,
-            pickedUp: null,
-            requestedAt: new Date().toISOString(),
-            pickedUpAt: null,
-          });
-          setAmount("");
-          setNote("Request sent.");
-          if (!embedded) setOpen(false);
-        }}
-      >
-        Send request
-      </Button>
-      {note ? <p className="mt-3 text-sm text-muted">{note}</p> : null}
-      <CashList items={mine} shopName={shop?.name ?? ""} />
-    </Card>
-  );
-  if (embedded) return form;
+  const chosenShop = owner ? place : shopId;
+  const rows = [...transfers]
+    .filter((item) => (owner || item.shopId === shopId) && !item.deletedAt)
+    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
+    .slice(0, 10);
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={cn(
-          "inline-flex min-h-12 items-center gap-3 rounded-md bg-raised px-3 font-display text-sm tracking-wide text-ink uppercase italic shadow-border",
-          open && "text-honey",
-        )}
-      >
-        <Bills />
-        Cash Transfer
-      </button>
-      {open ? form : null}
-    </div>
-  );
-}
-
-export function CashDesk() {
-  const transfers = useBoard((state) => state.cashTransfers ?? []);
-  const recordPickup = useBoard((state) => state.recordPickup);
-  const techs = useBoard((state) => state.techs);
-  const shops = useBoard((state) => state.shops);
-  const [amounts, setAmounts] = useState<Record<string, string>>({});
-  const ordered = [...transfers].sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-  const waiting = ordered.filter((item) => item.pickedUp == null);
-
-  return (
-    <Card className="mt-4">
-      <p className="text-sm text-muted">Cash transfers</p>
-      {waiting.length === 0 ? <p className="mt-3 text-sm text-ink">No pickups waiting.</p> : null}
-      <ul className="mt-3 space-y-4">
-        {ordered.map((item) => {
-          const manager = techs.find((person) => person.id === item.managerId);
+      <Button tone={open ? "honey" : "quiet"} onClick={() => setOpen((current) => !current)}>
+        Request a Pickup
+      </Button>
+      {open ? (
+        <div className="mt-4">
+          {owner ? (
+            <label className="block text-sm text-ink">
+              Shop
+              <select
+                value={chosenShop}
+                onChange={(event) => setPlace(event.target.value)}
+                className={cn(fieldClass, "mt-2")}
+              >
+                {shops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label className="mt-3 block text-sm text-ink">
+            Amount
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              className={cn(fieldClass, "mt-2")}
+            />
+          </label>
+          <Button
+            className="mt-3"
+            disabled={!ready || !chosenShop}
+            onClick={() => {
+              if (!ready || !chosenShop) return;
+              requestCash({
+                id: `cash-${Date.now()}`,
+                shopId: chosenShop,
+                managerId,
+                kind: "pickup",
+                requested: ready,
+                pickedUp: null,
+                requestedAt: new Date().toISOString(),
+                pickedUpAt: null,
+              });
+              setAmount("");
+              setOpen(false);
+            }}
+          >
+            Submit
+          </Button>
+        </div>
+      ) : null}
+      <ul className="mt-5 space-y-2">
+        {rows.length === 0 ? <li className="text-sm text-muted">No cash entries yet.</li> : null}
+        {rows.map((item) => {
           const shop = shops.find((place) => place.id === item.shopId);
-          const draft = amounts[item.id] ?? "";
-          const ready = readAmount(draft);
+          const done = item.pickedUp != null;
+          const pickupAmount = readAmount(picked);
           return (
-            <li key={item.id} className="text-sm">
-              <p className="text-ink">
-                {shop?.name ?? "Shop"} · {manager?.name ?? "Manager"}
-              </p>
-              <p className="text-muted">
-                {format(new Date(item.requestedAt), "MMM d, yyyy")} · Requested {formatMoney(item.requested)}
-                {item.pickedUp != null ? ` · Picked up ${formatMoney(item.pickedUp)}` : ""}
-              </p>
-              {item.pickedUp == null ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+            <li key={item.id}>
+              <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2 text-left text-sm text-ink"
+                onClick={() => {
+                  if (!owner || done) return;
+                  setOpenId(openId === item.id ? null : item.id);
+                  setPicked(item.pickedUp == null ? "" : String(item.pickedUp));
+                }}
+              >
+                <span
+                  className={cn("h-2.5 w-2.5 shrink-0 rounded-full", done ? "bg-[#2f9e62]" : "bg-[#c42230]")}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 truncate">
+                  {format(new Date(item.requestedAt), "MMM d")}
+                  {shop ? ` · ${shop.name}` : ""}
+                  {" · "}
+                  {item.kind === "dropoff" ? "Drop off" : "Pickup"} {formatMoney(item.requested)}
+                  {done ? ` · ${formatMoney(item.pickedUp ?? 0)}` : ""}
+                </span>
+              </button>
+              {owner ? (
+                <button
+                  type="button"
+                  className="shrink-0 text-sm text-muted"
+                  onClick={() => deleteCash(item.id)}
+                >
+                  Delete
+                </button>
+              ) : null}
+              </div>
+              {owner && openId === item.id && !done ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 pl-5">
                   <input
                     inputMode="decimal"
                     aria-label="Amount picked up"
                     placeholder="Amount picked up"
-                    value={draft}
-                    onChange={(event) =>
-                      setAmounts((current) => ({ ...current, [item.id]: event.target.value }))
-                    }
-                    className={cn(fieldClass, "max-w-48")}
+                    value={picked}
+                    onChange={(event) => setPicked(event.target.value)}
+                    className={cn(fieldClass, "max-w-40")}
                   />
                   <Button
-                    disabled={!ready}
+                    disabled={!pickupAmount}
                     onClick={() => {
-                      if (!ready) return;
-                      recordPickup(item.id, ready);
+                      if (!pickupAmount) return;
+                      updateCash(item.id, item.requested, pickupAmount);
+                      setOpenId(null);
                     }}
                   >
-                    Save pickup
+                    Save
                   </Button>
                 </div>
               ) : null}
@@ -156,52 +172,6 @@ export function CashDesk() {
           );
         })}
       </ul>
-    </Card>
-  );
-}
-
-export function CashBell() {
-  const viewer = useBoard((state) => state.viewer);
-  const transfers = useBoard((state) => state.cashTransfers ?? []);
-  const [open, setOpen] = useState(false);
-  if (!isOwnerViewer(viewer)) return null;
-  const waiting = transfers.filter((item) => item.pickedUp == null);
-  if (waiting.length === 0 && !open) return null;
-  return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-raised text-ink"
-        aria-label="Cash transfer"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Bills />
-      </button>
-      {waiting.length > 0 ? (
-        <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-honey px-1 text-[10px] font-semibold text-white">
-          {waiting.length}
-        </span>
-      ) : null}
-      {open ? (
-        <div className="absolute top-11 right-0 z-30 w-[min(100vw-2.5rem,24rem)] text-left">
-          <CashDesk />
-        </div>
-      ) : null}
-    </span>
-  );
-}
-
-function CashList({ items, shopName }: { items: CashTransfer[]; shopName: string }) {
-  if (items.length === 0) return null;
-  return (
-    <ul className="mt-4 space-y-2">
-      {items.map((item) => (
-        <li key={item.id} className="text-sm text-muted">
-          <span className="text-ink">{format(new Date(item.requestedAt), "MMM d")}</span>
-          {shopName ? ` · ${shopName}` : ""} · Requested {formatMoney(item.requested)}
-          {item.pickedUp == null ? " · waiting" : ` · Picked up ${formatMoney(item.pickedUp)}`}
-        </li>
-      ))}
-    </ul>
+    </div>
   );
 }
