@@ -40,6 +40,7 @@ export type WeekLog = {
   hours: number;
   billedHours: number | null;
   cars: number | null;
+  totalRecommendations: number | null;
   recsPerVehicle: number | null;
   totalSales: number | null;
   sellThrough: number | null;
@@ -377,6 +378,7 @@ export function blankWeek(
     hours: previous?.hours ?? 0,
     billedHours: null,
     cars: null,
+    totalRecommendations: null,
     recsPerVehicle: null,
     totalSales: null,
     sellThrough: null,

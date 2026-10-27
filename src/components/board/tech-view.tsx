@@ -81,7 +81,7 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [reviewing]);
-  const locked = Boolean(active && isWeekLocked(active.weekStart));
+  const locked = Boolean(active && tech.kind !== "technician" && isWeekLocked(active.weekStart));
   const writing = canReview(viewer, tech, techs) && !locked && (tech.kind !== "manager" || reviewing);
   const visible = canViewReview(viewer, tech, techs);
 
@@ -109,7 +109,10 @@ export function TechView({ tech }: { tech: Tech }) {
         sellThrough: pick(current.sellThrough, week.sellThrough),
         averageRepairOrder: pick(current.averageRepairOrder, week.averageRepairOrder),
         hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week.hoursPerRepairOrder),
-        recsPerVehicle: pick(current.recsPerVehicle, week.recsPerVehicle),
+        recsPerVehicle:
+          current.totalRecommendations != null
+            ? current.recsPerVehicle
+            : pick(current.recsPerVehicle, week.recsPerVehicle),
         salesPerBilledHour: pick(current.salesPerBilledHour, week.salesPerBilledHour),
         billedHours: pick(current.billedHours, week.billedHours),
         cars: pick(current.cars, week.cars),
@@ -421,6 +424,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     goal?: string;
     met?: (n: number) => boolean;
     commit: (value: number | null) => void;
+    total?: boolean;
   }[] = [
     {
       id: "total-sales",
@@ -469,13 +473,19 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     {
       id: "recs-per-car",
       label: "Recommendation per car",
-      value: week.recsPerVehicle,
-      max: 20000,
+      value: week.totalRecommendations,
+      max: 200000,
       rank: ranks.recsPerVehicle,
       text: week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle),
       goal: "Goal $2,800",
       met: (n) => n >= 2800,
-      commit: (recsPerVehicle) => upsertWeek({ ...week, recsPerVehicle }),
+      total: true,
+      commit: (totalRecommendations) =>
+        upsertWeek({
+          ...week,
+          totalRecommendations,
+          recsPerVehicle: recsFromTotal(totalRecommendations, week.cars),
+        }),
     },
     {
       id: "sales-per-hour",
@@ -537,15 +547,25 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
               {field.goal ? <p className="shrink-0 text-xs text-muted">{field.goal}</p> : null}
             </div>
             {writing ? (
-              <DecimalField
-                key={`${week.weekStart}-${field.id}`}
-                id={field.id}
-                label=""
-                value={field.value}
-                max={field.max}
-                onCommit={field.commit}
-                met={field.met}
-              />
+              <>
+                <DecimalField
+                  key={`${week.weekStart}-${field.id}`}
+                  id={field.id}
+                  label={field.total ? "Total recommendations" : ""}
+                  value={field.value}
+                  max={field.max}
+                  onCommit={field.commit}
+                  met={field.total ? undefined : field.met}
+                />
+                {field.total ? (
+                  <p
+                    className="mt-1 font-display text-2xl font-semibold tabular-nums"
+                    style={{ color: field.met ? goalColor(week.recsPerVehicle, field.met) : undefined }}
+                  >
+                    {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p
                 className="mt-1 font-display text-2xl font-semibold tabular-nums"
@@ -629,7 +649,7 @@ function WeekWork({
   return (
     <>
     <Card className="mt-6">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-baseline gap-3">
         <p className="text-sm text-muted">Billed hours</p>
         <p className="text-xs text-muted">Goal 40</p>
       </div>
@@ -674,7 +694,16 @@ function WeekWork({
               label=""
               value={week.cars}
               max={200}
-              onCommit={(cars) => upsertWeek({ ...week, cars })}
+              onCommit={(cars) =>
+                upsertWeek({
+                  ...week,
+                  cars,
+                  recsPerVehicle:
+                    week.totalRecommendations != null
+                      ? recsFromTotal(week.totalRecommendations, cars)
+                      : week.recsPerVehicle,
+                })
+              }
               met={(n) => n >= 14}
             />
           ) : (
@@ -697,28 +726,35 @@ function WeekWork({
           ) : null}
         </div>
         <div>
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm text-muted">Recommendations per repair order</p>
+          {writing ? (
+            <>
+              <p className="text-sm text-muted">Total recommendations</p>
+              <DecimalField
+                key={`${week.weekStart}-recs`}
+                id="recs"
+                label=""
+                value={week.totalRecommendations ?? null}
+                max={200000}
+                onCommit={(totalRecommendations) =>
+                  upsertWeek({
+                    ...week,
+                    totalRecommendations,
+                    recsPerVehicle: recsFromTotal(totalRecommendations, week.cars),
+                  })
+                }
+              />
+            </>
+          ) : null}
+          <div className={cn("flex items-baseline gap-2", writing ? "mt-3" : "")}>
+            <p className="text-sm text-muted">Recommendations per vehicle</p>
             <p className="shrink-0 text-xs text-muted">Goal $2,500</p>
           </div>
-          {writing ? (
-            <DecimalField
-              key={`${week.weekStart}-recs`}
-              id="recs"
-              label=""
-              value={week.recsPerVehicle}
-              max={20000}
-              onCommit={(recsPerVehicle) => upsertWeek({ ...week, recsPerVehicle })}
-              met={(n) => n >= 2500}
-            />
-          ) : (
-            <p
-              className="mt-1 font-display text-3xl font-semibold tabular-nums"
-              style={{ color: goalColor(week.recsPerVehicle, (n) => n >= 2500) }}
-            >
-              {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
-            </p>
-          )}
+          <p
+            className="mt-1 font-display text-3xl font-semibold tabular-nums"
+            style={{ color: goalColor(week.recsPerVehicle, (n) => n >= 2500) }}
+          >
+            {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
+          </p>
           <RankLine rank={ranks?.recsPerVehicle} total={ranks?.total} />
           {detail ? (
           <MissNote
@@ -1240,6 +1276,11 @@ function goalColor(value: number | null, met: (n: number) => boolean) {
   return met(value) ? "#3DDC84" : "#ff4d4d";
 }
 
+function recsFromTotal(total: number | null, cars: number | null) {
+  if (total == null || cars == null || cars <= 0) return null;
+  return Math.round((total / cars) * 100) / 100;
+}
+
 function DecimalField({
   id,
   label,
@@ -1403,14 +1444,21 @@ function LeadWriter({
               useBoard.getState().weeks.find(
                 (item) => item.techId === week.techId && item.weekStart === week.weekStart,
               ) ?? week;
-            upsertWeek({ ...latest, submitted: true });
+            upsertWeek({
+              ...latest,
+              submitted: tech.kind === "technician" ? latest.submitted : true,
+            });
             onDone();
           }}
         >
-          Submit
+          {tech.kind === "technician" ? "Save and exit" : "Submit"}
         </Button>
         <p className="text-sm text-muted">
-          {week.submitted ? "This week is submitted." : "Submit when the week is filled in."}
+          {tech.kind === "technician"
+            ? "Saved as you go. Leave and come back anytime."
+            : week.submitted
+              ? "This week is submitted."
+              : "Submit when the week is filled in."}
         </p>
         </>
       ) : null}
