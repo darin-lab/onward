@@ -163,7 +163,7 @@ export function Roster() {
                     <div>
                       <dt className="text-muted">Cars</dt>
                       <dd className="tabular-nums text-ink">
-                        {week.cars == null ? "—" : formatHours(week.cars)}
+                        {week.cars == null ? "—" : formatHours(Math.round(week.cars))}
                       </dd>
                     </div>
                     <div>

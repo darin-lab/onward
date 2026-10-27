@@ -334,7 +334,7 @@ function CrewGlance({ shopId }: { shopId: string }) {
                   <span>
                     <span className="block text-muted">Cars</span>
                     <span className="tabular-nums text-ink">
-                      {week?.cars == null ? "—" : formatHours(week.cars)}
+                      {week?.cars == null ? "—" : formatHours(Math.round(week.cars))}
                     </span>
                   </span>
                   <span>
@@ -784,15 +784,15 @@ function WeekWork({
           </div>
           <p
             className="mt-1 font-display text-3xl font-semibold tabular-nums"
-            style={{ color: goalColor(week.cars, (n) => n >= 14) }}
+            style={{ color: goalColor(week.cars == null ? null : Math.round(week.cars), (n) => n >= 14) }}
           >
-            {week.cars == null ? "—" : formatHours(week.cars)}
+            {week.cars == null ? "—" : formatHours(Math.round(week.cars))}
           </p>
           <RankLine rank={ranks?.cars} total={ranks?.total} />
           {detail ? (
             <MissNote
               id="cars-why"
-              show={week.cars != null && week.cars < 14}
+              show={week.cars != null && Math.round(week.cars) < 14}
               writing={writing}
               value={week.carsNote ?? ""}
               onChange={(carsNote) => upsertWeek({ ...week, carsNote })}
@@ -1332,7 +1332,7 @@ function techFigures(input: {
 }) {
   const cars =
     input.billedHours != null && input.billedPerRo != null && input.billedPerRo > 0
-      ? Math.round((input.billedHours / input.billedPerRo) * 100) / 100
+      ? Math.round(input.billedHours / input.billedPerRo)
       : null;
   const efficiency =
     input.billedHours != null && input.serviceHours != null && input.serviceHours > 0
