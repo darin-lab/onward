@@ -154,10 +154,13 @@ function pacificWallTime(day: string, hour: number, minute: number) {
 
 export async function sendDueReceipts(now = new Date()) {
   const clock = pacificClock(now);
-  if (clock.hour !== 19 || clock.minute < 6 || clock.minute > 15) {
-    return { ok: true as const, sent: 0 };
+  if (clock.hour !== 19) {
+    return { ok: true as const, sent: 0, skipped: true };
   }
-  const cutoff = pacificWallTime(clock.day, 19, 6);
+  const cutoff =
+    clock.minute >= 6
+      ? pacificWallTime(clock.day, 19, 6)
+      : pacificWallTime(clock.day, 19, clock.minute);
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<ReceiptRow>(
