@@ -14,7 +14,8 @@ export const Route = createFileRoute("/api/receipts")({
         if (!cronAllowed(request)) return new Response("Unauthorized", { status: 401 });
         const { sendDueReceipts } = await import("@/lib/board/receipt.functions");
         const result = await sendDueReceipts();
-        return Response.json(result);
+        const failed = result.ok === false;
+        return Response.json(result, { status: failed ? 500 : 200 });
       },
     },
   },

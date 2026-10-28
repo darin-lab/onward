@@ -96,7 +96,7 @@ export function ReceiptDesk() {
               setTotal("");
               setNote("");
               setFile(null);
-              setMessage("Saved. These go out at 7:06pm. Anything after that goes the next day.");
+              setMessage("Saved. These go out after 7:06pm. Anything entered after that goes the next day.");
               refresh();
             })
             .catch(() => setMessage("That receipt did not save."))

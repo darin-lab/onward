@@ -153,15 +153,22 @@ function pacificWallTime(day: string, hour: number, minute: number) {
   return new Date(wall.getTime() + offset(first));
 }
 
-export async function sendDueReceipts(now = new Date()) {
+function previousPacificDay(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, date));
+  next.setUTCDate(next.getUTCDate() - 1);
+  return next.toISOString().slice(0, 10);
+}
+
+function dueCutoff(now = new Date()) {
   const clock = pacificClock(now);
-  if (clock.hour !== 19) {
-    return { ok: true as const, sent: 0, skipped: true };
-  }
-  const cutoff =
-    clock.minute >= 6
-      ? pacificWallTime(clock.day, 19, 6)
-      : pacificWallTime(clock.day, 19, clock.minute);
+  const tonight = pacificWallTime(clock.day, 19, 6);
+  if (now.getTime() >= tonight.getTime()) return tonight;
+  return pacificWallTime(previousPacificDay(clock.day), 19, 6);
+}
+
+export async function sendDueReceipts(now = new Date()) {
+  const cutoff = dueCutoff(now);
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<ReceiptRow>(
@@ -189,9 +196,11 @@ export async function sendDueReceipts(now = new Date()) {
     secure: true,
     auth: { user, pass },
   });
+  const clock = pacificClock(cutoff);
   const when = readableDay(clock.day);
   const stamp = `${clock.day.slice(5, 7)}-${clock.day.slice(8, 10)}-${clock.day.slice(0, 4)}`;
   let sent = 0;
+  const errors: string[] = [];
   for (const [personId, items] of groups) {
     const place = places.get(personId) ?? "Shop";
     const name = items[0]?.submitter_name ?? "Manager";
@@ -211,19 +220,25 @@ export async function sendDueReceipts(now = new Date()) {
           { ...file, contentDisposition: "attachment" as const },
         ];
       });
-    await transport.sendMail({
-      from: user,
-      to: to.join(", "),
-      subject: `Receipts - ${name} - ${place} - ${stamp}`,
-      text: receiptText(when, items, total),
-      html: receiptHtml(when, items, total),
-      attachments,
-    });
+    try {
+      await transport.sendMail({
+        from: user,
+        to: to.join(", "),
+        subject: `Receipts - ${name} - ${place} - ${stamp}`,
+        text: receiptText(when, items, total),
+        html: receiptHtml(when, items, total),
+        attachments,
+      });
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Email failed");
+      continue;
+    }
     for (const row of items) {
       await sql.query(`update receipts set mailed_at = now() where id = $1`, [row.id]);
     }
     sent += 1;
   }
+  if (errors.length > 0) return { ok: false as const, sent, errors };
   return { ok: true as const, sent };
 }
 
