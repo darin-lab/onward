@@ -85,6 +85,8 @@ function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
     next.boomerangs = saved.boomerangs;
   }
   if (saved.submitted) next.submitted = true;
+  if (saved.darinReady) next.darinReady = true;
+  if (saved.arunReady) next.arunReady = true;
   return next;
 }
 

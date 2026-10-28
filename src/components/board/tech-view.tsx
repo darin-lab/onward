@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ThumbsUp } from "lucide-react";
 import { HabitChart, HoursChart } from "@/components/board/charts";
 import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 import { flushSharedBoard } from "@/lib/board/shared";
+import { mailManagerReview } from "@/lib/board/mail-manager.functions";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import {
   LEVELS,
@@ -85,7 +86,7 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [reviewing]);
-  const locked = Boolean(active && tech.kind !== "technician" && isWeekLocked(active.weekStart));
+  const locked = Boolean(active && tech.kind === "manager" && active.submitted);
   const stage = tech.kind === "technician" ? techReviewStage(active) : "draft";
   const finished = tech.kind === "technician" && stage === "locked";
   const owner = isOwnerViewer(viewer);
@@ -178,7 +179,7 @@ export function TechView({ tech }: { tech: Tech }) {
         />
       ) : null}
       {finished ? <p className="mt-2 text-center text-sm text-muted">This review is finished.</p> : null}
-      {locked ? <p className="mt-2 text-center text-sm text-muted">Locked on Wednesday.</p> : null}
+      {locked ? <p className="mt-2 text-center text-sm text-muted">This review is finished.</p> : null}
 
       {tech.kind === "technician" && active ? (
         <WeekWork
@@ -1661,36 +1662,15 @@ function LeadWriter({
             </div>
           ) : null}
         </div>
-      ) : week ? (
-        <>
-        <Button
-          className="w-full text-base"
-          disabled={sending}
-          onClick={() => {
-            if (sending) return;
-            setSending(true);
-            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-            const latest =
-              useBoard.getState().weeks.find(
-                (item) => item.techId === week.techId && item.weekStart === week.weekStart,
-              ) ?? week;
-            upsertWeek({
-              ...latest,
-              submitted: tech.kind === "technician" ? latest.submitted : true,
-            });
-            void flushSharedBoard().finally(onDone);
-          }}
-        >
-          {tech.kind === "technician" ? "Save and exit" : "Submit"}
-        </Button>
-        <p className="text-sm text-muted">
-          {tech.kind === "technician"
-            ? "Save and exit before you leave. Opening this page will not erase it."
-            : week.submitted
-              ? "This week is submitted."
-              : "Submit when the week is filled in."}
-        </p>
-        </>
+      ) : week && tech.kind === "manager" ? (
+        <ManagerSignOff
+          tech={tech}
+          week={week}
+          sending={sending}
+          setSending={setSending}
+          onKeep={keep}
+          onDone={onDone}
+        />
       ) : null}
 
       {actor === "owner" ? (
@@ -1708,6 +1688,216 @@ function LeadWriter({
       ) : null}
     </div>
   );
+}
+
+function ManagerSignOff({
+  tech,
+  week,
+  sending,
+  setSending,
+  onKeep,
+  onDone,
+}: {
+  tech: Tech;
+  week: WeekLog;
+  sending: boolean;
+  setSending: (value: boolean) => void;
+  onKeep: (next: WeekLog, leave: boolean) => Promise<void>;
+  onDone: () => void;
+}) {
+  const viewer = useBoard((state) => state.viewer);
+  const shops = useBoard((state) => state.shops);
+  const categories = categoriesFor(useBoard((state) => state.categories), "manager");
+  const [asking, setAsking] = useState<"darin" | "arun" | null>(null);
+  const [savedNote, setSavedNote] = useState("");
+  const latest = () =>
+    useBoard.getState().weeks.find(
+      (item) => item.techId === week.techId && item.weekStart === week.weekStart,
+    ) ?? week;
+  const settle = () =>
+    new Promise<void>((resolve) => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      setTimeout(resolve, 0);
+    });
+  const save = (leave: boolean) => {
+    if (sending) return;
+    setSending(true);
+    void settle()
+      .then(() => onKeep(latest(), leave))
+      .finally(() => {
+        if (!leave) {
+          setSending(false);
+          setSavedNote("Saved.");
+        }
+      });
+  };
+  const approve = (who: "darin" | "arun") => {
+    setAsking(null);
+    setSending(true);
+    void settle()
+      .then(() => {
+        const current = latest();
+        return onKeep(
+          {
+            ...current,
+            darinReady: who === "darin" ? true : current.darinReady,
+            arunReady: who === "arun" ? true : current.arunReady,
+          },
+          false,
+        );
+      })
+      .finally(() => {
+        setSending(false);
+        setSavedNote("Saved.");
+      });
+  };
+  const both = Boolean(week.darinReady && week.arunReady);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Button disabled={sending} onClick={() => save(false)}>
+          Save
+        </Button>
+        <Button disabled={sending} onClick={() => save(true)}>
+          Save & exit
+        </Button>
+        <ReadyMark
+          label="Darin"
+          ready={Boolean(week.darinReady)}
+          mine={viewer === "darin"}
+          disabled={sending}
+          onAsk={() => setAsking("darin")}
+        />
+        <ReadyMark
+          label="Arun"
+          ready={Boolean(week.arunReady)}
+          mine={viewer === "arun"}
+          disabled={sending}
+          onAsk={() => setAsking("arun")}
+        />
+      </div>
+      {both ? (
+        <button
+          type="button"
+          disabled={sending}
+          onClick={() => {
+            if (sending) return;
+            setSending(true);
+            void settle().then(() => {
+              const current = latest();
+              const saved = { ...current, darinReady: true, arunReady: true, submitted: true, reviewStage: "locked" as const };
+              return onKeep(saved, false).then(() => {
+                const shop = shops.find((item) => item.id === tech.shopId);
+                void mailManagerReview({
+                  data: {
+                    shopId: tech.shopId,
+                    managerName: tech.name,
+                    managerEmail: tech.email ?? "",
+                    shopName: shop?.name ?? tech.shopId,
+                    weekLabel: weekRangeLabel(current.weekStart),
+                    rows: reviewRows(current),
+                    notes: [
+                      { label: "What's already working", value: current.working ?? "" },
+                      { label: "What to practice next", value: current.practice ?? "" },
+                    ],
+                    habits: categories.map((category) => ({
+                      name: category.name,
+                      word: levelWord(current.scores[category.id], "manager"),
+                    })),
+                  },
+                });
+                onDone();
+              });
+            });
+          }}
+          className="relative w-full overflow-hidden rounded-md bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-400 px-5 py-4 font-display text-lg font-semibold tracking-wide text-zinc-900 uppercase italic shadow-[0_0_28px_rgba(250,204,21,0.9)]"
+        >
+          <span className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 animate-[shine_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+          Submit
+        </button>
+      ) : (
+        <p className="text-sm text-muted">Both names turn green before submit. Turning one green saves the review.</p>
+      )}
+      {savedNote ? <p className="text-sm text-muted">{savedNote}</p> : null}
+      {asking ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-md bg-surface px-6 py-6 text-center shadow-border">
+            <p className="font-display text-2xl tracking-wide text-ink uppercase italic">
+              is this review as complete as it can be?
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                className="min-h-11 rounded-md bg-honey font-display text-sm font-semibold tracking-wide text-honey-fg uppercase italic"
+                onClick={() => approve(asking)}
+              >
+                yes
+              </button>
+              <button
+                type="button"
+                className="min-h-11 font-display text-sm tracking-wide text-muted uppercase italic"
+                onClick={() => setAsking(null)}
+              >
+                no
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReadyMark({
+  label,
+  ready,
+  mine,
+  disabled,
+  onAsk,
+}: {
+  label: string;
+  ready: boolean;
+  mine: boolean;
+  disabled: boolean;
+  onAsk: () => void;
+}) {
+  if (ready) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-500 px-3 font-display text-sm font-semibold tracking-wide text-white uppercase italic"
+      >
+        <ThumbsUp className="size-4" />
+        {label}!
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!mine || disabled}
+      onClick={onAsk}
+      className={cn(
+        "min-h-11 rounded-md px-3 font-display text-sm font-semibold tracking-wide uppercase italic",
+        mine ? "bg-raised text-ink shadow-border" : "cursor-not-allowed bg-raised text-muted opacity-40",
+      )}
+    >
+      {label}?
+    </button>
+  );
+}
+
+function reviewRows(week: WeekLog) {
+  return [
+    { label: "Total sales", value: week.totalSales == null ? "—" : formatMoney(week.totalSales) },
+    { label: "Sell through percentage", value: week.sellThrough == null ? "—" : `${formatHours(week.sellThrough)}%` },
+    { label: "ARO", value: week.averageRepairOrder == null ? "—" : formatMoney(week.averageRepairOrder) },
+    { label: "Hours per repair order", value: week.hoursPerRepairOrder == null ? "—" : formatHours(week.hoursPerRepairOrder) },
+    { label: "Recommendation per car", value: week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle) },
+    { label: "Sales per billed hour", value: week.salesPerBilledHour == null ? "—" : formatMoney(week.salesPerBilledHour) },
+    { label: "Gross profit", value: week.grossProfit == null ? "—" : formatMoney(week.grossProfit) },
+  ];
 }
 
 function managerGaps(week: WeekLog) {

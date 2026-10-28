@@ -61,6 +61,8 @@ export type WeekLog = {
   practice: string;
   submitted?: boolean;
   reviewStage?: "draft" | "manager" | "locked";
+  darinReady?: boolean;
+  arunReady?: boolean;
 };
 
 export const DAY_FIELDS = [
