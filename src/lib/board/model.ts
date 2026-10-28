@@ -60,6 +60,7 @@ export type WeekLog = {
   working: string;
   practice: string;
   submitted?: boolean;
+  reviewStage?: "draft" | "manager" | "locked";
 };
 
 export const DAY_FIELDS = [
@@ -231,6 +232,24 @@ export function relationLabel(relation: WeekRelation) {
   if (relation === "current") return "This week, still open";
   if (relation === "next") return "This week";
   return "Earlier week";
+}
+
+export function techReviewStage(week?: WeekLog | null) {
+  if (week?.reviewStage === "manager" || week?.reviewStage === "locked") return week.reviewStage;
+  return "draft" as const;
+}
+
+let focusedReview: { techId: string; weekStart: string } | null = null;
+
+export function focusReview(techId: string, weekStart: string) {
+  focusedReview = { techId, weekStart };
+}
+
+export function takeFocusedReview(techId: string) {
+  if (focusedReview?.techId !== techId) return null;
+  const weekStart = focusedReview.weekStart;
+  focusedReview = null;
+  return weekStart;
 }
 
 export function weeksFor(weeks: WeekLog[], techId: string) {

@@ -27,6 +27,8 @@ import {
   relationLabel,
   shiftWord,
   shopRecord,
+  techReviewStage,
+  takeFocusedReview,
   weekRangeLabel,
   weekRelation,
   weeksFor,
@@ -49,7 +51,7 @@ export function TechView({ tech }: { tech: Tech }) {
   const startWeek = useBoard((state) => state.startWeek);
   const list = weeksFor(weeks, tech.id);
   const featured = featuredWeek(weeks, tech.id);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(() => takeFocusedReview(tech.id));
   const active = list.find((week) => week.weekStart === picked) ?? featured;
   const index = active ? list.findIndex((week) => week.weekStart === active.weekStart) : -1;
   const previous = index > 0 ? list[index - 1] : null;
@@ -71,20 +73,28 @@ export function TechView({ tech }: { tech: Tech }) {
     if (tech.kind === "manager" && !isWeekLocked(upcoming)) setReviewing(true);
   };
   useEffect(() => {
-    if (!boardReady || !canLog) return;
+    if (!boardReady || !canLog || !isOwnerViewer(viewer) || tech.kind !== "technician") return;
     const last = priorWeekISO();
     const have = new Set(
       useBoard.getState().weeks.filter((week) => week.techId === tech.id).map((week) => week.weekStart),
     );
     if (!have.has(last)) startWeek(tech.id, last);
     setPicked((current) => current ?? last);
-  }, [boardReady, canLog, tech.id, startWeek]);
+  }, [boardReady, canLog, tech.id, tech.kind, viewer, startWeek]);
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [reviewing]);
   const locked = Boolean(active && tech.kind !== "technician" && isWeekLocked(active.weekStart));
-  const writing = canReview(viewer, tech, techs) && !locked && (tech.kind !== "manager" || reviewing);
+  const stage = tech.kind === "technician" ? techReviewStage(active) : "draft";
+  const finished = tech.kind === "technician" && stage === "locked";
+  const owner = isOwnerViewer(viewer);
+  const editNumbers = tech.kind === "technician" && owner && !finished;
+  const editNotes = tech.kind === "technician" && !owner && canReview(viewer, tech, techs) && stage === "manager";
+  const writing =
+    tech.kind === "manager"
+      ? canReview(viewer, tech, techs) && !locked && reviewing
+      : editNumbers || editNotes;
   const visible = canViewReview(viewer, tech, techs);
 
   useEffect(() => {
@@ -167,16 +177,28 @@ export function TechView({ tech }: { tech: Tech }) {
           onNext={openLater}
         />
       ) : null}
+      {finished ? <p className="mt-2 text-center text-sm text-muted">This review is finished.</p> : null}
       {locked ? <p className="mt-2 text-center text-sm text-muted">Locked on Wednesday.</p> : null}
 
       {tech.kind === "technician" && active ? (
-        <WeekWork list={list} week={active} writing={writing} detail={visible} />
+        <WeekWork
+          list={list}
+          week={active}
+          writing={editNumbers || editNotes}
+          numbers={editNumbers}
+          service={editNotes}
+          notes={editNotes}
+          detail={visible}
+        />
+      ) : null}
+      {tech.kind === "technician" && !owner && stage === "draft" ? (
+        <p className="mt-6 text-sm text-muted">Waiting on the numbers.</p>
       ) : null}
 
       {visible && active ? (
         tech.kind === "technician" ? (
           <>
-            <TechNotes week={active} writing={writing} />
+            <TechNotes week={active} writing={editNotes} />
             {writing ? null : (
               <>
                 <Habits list={list} week={active} kind={tech.kind} />
@@ -203,7 +225,20 @@ export function TechView({ tech }: { tech: Tech }) {
       {tech.kind === "manager" ? <CrewGlance shopId={tech.shopId} /> : null}
       {tech.kind === "technician" && !writing ? <CompanyPoll highlightId={tech.id} /> : null}
 
-      {writing ? (
+      {tech.kind === "technician" && active && (editNumbers || editNotes) ? (
+        <LeadWriter
+          tech={tech}
+          week={active}
+          upcoming={upcoming}
+          actor={editNotes ? "manager" : "owner"}
+          onStart={(weekStart) => {
+            startWeek(tech.id, weekStart);
+            setPicked(weekStart);
+          }}
+          onDone={() => window.history.back()}
+        />
+      ) : null}
+      {writing && tech.kind === "manager" ? (
         <LeadWriter
           tech={tech}
           week={active}
@@ -212,10 +247,7 @@ export function TechView({ tech }: { tech: Tech }) {
             startWeek(tech.id, weekStart);
             setPicked(weekStart);
           }}
-          onDone={() => {
-            if (tech.kind === "manager") setReviewing(false);
-            else window.history.back();
-          }}
+          onDone={() => setReviewing(false)}
         />
       ) : null}
       {tech.kind === "manager" && isOwnerViewer(viewer) && !reviewing && !locked ? (
@@ -638,12 +670,21 @@ function WeekWork({
   week,
   writing,
   detail = true,
+  numbers,
+  service,
+  notes,
 }: {
   list: WeekLog[];
   week: WeekLog;
   writing: boolean;
   detail?: boolean;
+  numbers?: boolean;
+  service?: boolean;
+  notes?: boolean;
 }) {
+  const editNumbers = numbers ?? writing;
+  const editService = service ?? writing;
+  const editNotes = notes ?? writing;
   const techs = useBoard((state) => state.techs);
   const weeks = useBoard((state) => state.weeks);
   const upsertWeek = useBoard((state) => state.upsertWeek);
@@ -655,7 +696,7 @@ function WeekWork({
         <p className="text-sm text-muted">Billed hours</p>
         <p className="text-xs text-muted">Goal 40</p>
       </div>
-      {writing ? (
+      {editNumbers ? (
         <DecimalField
           key={`${week.weekStart}-billed`}
           id="billed"
@@ -689,7 +730,7 @@ function WeekWork({
       <MissNote
         id="billed-why"
         show={week.billedHours != null && week.billedHours < 40}
-        writing={writing}
+        writing={editNotes}
         value={week.billedNote ?? ""}
         onChange={(billedNote) => upsertWeek({ ...week, billedNote })}
       />
@@ -697,7 +738,7 @@ function WeekWork({
       <div className="mt-5 grid grid-cols-2 gap-4">
         <div>
           <p className="text-sm text-muted">BH/RO</p>
-          {writing ? (
+          {editNumbers ? (
             <DecimalField
               key={`${week.weekStart}-bhro`}
               id="bhro"
@@ -725,7 +766,7 @@ function WeekWork({
         </div>
         <div>
           <p className="text-sm text-muted">Service hours</p>
-          {writing ? (
+          {editService ? (
             <DecimalField
               key={`${week.weekStart}-service`}
               id="service-hours"
@@ -753,7 +794,7 @@ function WeekWork({
         </div>
         <div>
           <p className="text-sm text-muted">Total recommendations</p>
-          {writing ? (
+          {editNumbers ? (
             <DecimalField
               key={`${week.weekStart}-recs`}
               id="recs"
@@ -795,7 +836,7 @@ function WeekWork({
             <MissNote
               id="cars-why"
               show={week.cars != null && Math.round(week.cars) < 14}
-              writing={writing}
+              writing={editNotes}
               value={week.carsNote ?? ""}
               onChange={(carsNote) => upsertWeek({ ...week, carsNote })}
             />
@@ -817,7 +858,7 @@ function WeekWork({
             <MissNote
               id="recs-why"
               show={week.recsPerVehicle != null && week.recsPerVehicle < 2500}
-              writing={writing}
+              writing={editNotes}
               value={week.recsNote ?? ""}
               onChange={(recsNote) => upsertWeek({ ...week, recsNote })}
             />
@@ -839,7 +880,7 @@ function WeekWork({
             <MissNote
               id="eff-why"
               show={week.efficiency != null && (week.efficiency < 100 || week.efficiency > 150)}
-              writing={writing}
+              writing={editNotes}
               value={week.efficiencyNote ?? ""}
               onChange={(efficiencyNote) => upsertWeek({ ...week, efficiencyNote })}
             />
@@ -851,9 +892,9 @@ function WeekWork({
           Rank shows under each number once every technician's week is in.
         </p>
       ) : null}
-      {detail ? <Boomerangs week={week} writing={writing} /> : null}
+      {detail ? <Boomerangs week={week} writing={editNotes} /> : null}
     </Card>
-    {writing ? null : (
+    {editNumbers || editService || editNotes ? null : (
       <Card className="mt-6">
         <h2 className="text-lg font-semibold text-ink">Billed Hours</h2>
         <HoursChart
@@ -1421,22 +1462,41 @@ function LeadWriter({
   upcoming,
   onStart,
   onDone,
+  actor,
 }: {
   tech: Tech;
   week: WeekLog | null;
   upcoming: string | null;
   onStart: (weekStart: string) => void;
   onDone: () => void;
+  actor?: "owner" | "manager";
 }) {
   const upsertWeek = useBoard((state) => state.upsertWeek);
   const removeTech = useBoard((state) => state.removeTech);
   const categories = categoriesFor(useBoard((state) => state.categories), tech.kind);
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  const latestWeek = () => {
+    if (!week) return null;
+    return (
+      useBoard.getState().weeks.find(
+        (item) => item.techId === week.techId && item.weekStart === week.weekStart,
+      ) ?? week
+    );
+  };
+  const keep = async (next: WeekLog, leave: boolean) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    upsertWeek(next);
+    await flushSharedBoard();
+    if (leave) onDone();
+  };
 
   return (
     <div className="mt-10 space-y-4 border-t border-line pt-8">
-      {tech.kind === "technician" ? (
+      {actor === "owner" ? (
         <>
           <h2 className="text-2xl">Write the week</h2>
           {upcoming ? (
@@ -1449,7 +1509,7 @@ function LeadWriter({
         </>
       ) : null}
 
-      {week && tech.kind === "technician" ? (
+      {week && tech.kind === "technician" && actor === "manager" ? (
         <>
         <Card>
           <p className="text-sm text-honey">{relationLabel(weekRelation(week.weekStart))}</p>
@@ -1498,7 +1558,110 @@ function LeadWriter({
         </>
       ) : null}
 
-      {week ? (
+      {week && actor ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            {actor === "owner"
+              ? techReviewStage(week) === "manager"
+                ? "With the manager. You can still change the numbers until they submit."
+                : "Enter billed hours, BH/RO, and total recommendations. Submit sends it to the manager."
+              : "Add service hours and every note, then submit."}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              disabled={sending}
+              onClick={() => {
+                const latest = latestWeek();
+                if (!latest || sending) return;
+                setSending(true);
+                setNotice("");
+                void keep(latest, false).finally(() => {
+                  setSending(false);
+                  setNotice("Saved.");
+                });
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              disabled={sending}
+              onClick={() => {
+                const latest = latestWeek();
+                if (!latest || sending) return;
+                setSending(true);
+                void keep(latest, true);
+              }}
+            >
+              Save & exit
+            </Button>
+          </div>
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => {
+              const latest = latestWeek();
+              if (!latest || sending) return;
+              if (actor === "owner") {
+                if (
+                  latest.billedHours == null ||
+                  latest.hoursPerRepairOrder == null ||
+                  latest.totalRecommendations == null
+                ) {
+                  setNotice("Add billed hours, BH/RO, and total recommendations first.");
+                  return;
+                }
+                setSending(true);
+                void keep({ ...latest, reviewStage: "manager" }, false).finally(() => {
+                  setSending(false);
+                  setNotice("Sent to the manager.");
+                });
+                return;
+              }
+              const gaps = managerGaps(latest);
+              if (gaps.length > 0) {
+                setNotice(`Still need ${gaps.join(", ")}.`);
+                return;
+              }
+              setConfirming(true);
+            }}
+            className="w-full animate-pulse rounded-md bg-honey px-5 py-4 font-display text-lg font-semibold tracking-wide text-honey-fg uppercase italic shadow-[0_0_28px_rgba(196,34,48,0.9)]"
+          >
+            Submit
+          </button>
+          {notice ? <p className="text-sm text-muted">{notice}</p> : null}
+          {confirming ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div className="w-full max-w-sm rounded-md bg-surface px-6 py-6 text-center shadow-border">
+                <p className="font-display text-2xl tracking-wide text-ink uppercase italic">
+                  you for reals right now?
+                </p>
+                <div className="mt-6 grid gap-3">
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-md bg-honey font-display text-sm font-semibold tracking-wide text-honey-fg uppercase italic"
+                    onClick={() => {
+                      const latest = latestWeek();
+                      if (!latest) return;
+                      setConfirming(false);
+                      setSending(true);
+                      void keep({ ...latest, reviewStage: "locked", submitted: true }, true);
+                    }}
+                  >
+                    i am for reals
+                  </button>
+                  <button
+                    type="button"
+                    className="min-h-11 font-display text-sm tracking-wide text-muted uppercase italic"
+                    onClick={() => setConfirming(false)}
+                  >
+                    nope
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : week ? (
         <>
         <Button
           className="w-full text-base"
@@ -1530,17 +1693,46 @@ function LeadWriter({
         </>
       ) : null}
 
-      <button
-        type="button"
-        className="min-h-11 text-sm text-muted underline-offset-4 hover:underline"
-        onClick={() => {
-          if (!window.confirm(`Remove ${tech.name} from this board?`)) return;
-          removeTech(tech.id);
-          void navigate({ to: "/" });
-        }}
-      >
-        Remove from the crew
-      </button>
+      {actor === "owner" ? (
+        <button
+          type="button"
+          className="min-h-11 text-sm text-muted underline-offset-4 hover:underline"
+          onClick={() => {
+            if (!window.confirm(`Remove ${tech.name} from this board?`)) return;
+            removeTech(tech.id);
+            void navigate({ to: "/" });
+          }}
+        >
+          Remove from the crew
+        </button>
+      ) : null}
     </div>
   );
+}
+
+function managerGaps(week: WeekLog) {
+  const gaps: string[] = [];
+  if (week.serviceHours == null) gaps.push("service hours");
+  if (!week.working?.trim()) gaps.push("what went well");
+  if (!week.practice?.trim()) gaps.push("what we need to work on");
+  if (week.billedHours != null && week.billedHours < 40 && !(week.billedNote ?? "").trim()) {
+    gaps.push("the billed hours note");
+  }
+  if (week.cars != null && Math.round(week.cars) < 14 && !(week.carsNote ?? "").trim()) {
+    gaps.push("the cars note");
+  }
+  if (week.recsPerVehicle != null && week.recsPerVehicle < 2500 && !(week.recsNote ?? "").trim()) {
+    gaps.push("the recommendations note");
+  }
+  if (
+    week.efficiency != null &&
+    (week.efficiency < 100 || week.efficiency > 150) &&
+    !(week.efficiencyNote ?? "").trim()
+  ) {
+    gaps.push("the efficiency note");
+  }
+  for (const item of week.boomerangs ?? []) {
+    if (!item.ro.trim() || !item.note.trim()) gaps.push("each boomerang");
+  }
+  return gaps;
 }

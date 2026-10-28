@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { pinSignIn, pinSignOut, pinStatus } from "@/lib/board/pin.functions";
 import { fieldClass } from "@/components/board/ui";
+import { techReviewStage, focusReview } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { ToolsMenu } from "@/components/board/roster";
 
@@ -37,6 +38,7 @@ export function Shell({ children }: { children: ReactNode }) {
               </Link>
               <div className="text-right">
                 <div className="flex items-center justify-end gap-3">
+                  <ReviewAlert />
                   <ToolsMenu />
                   <div>
                     <p className="text-sm text-ink">{session.name}</p>
@@ -68,6 +70,55 @@ export function Shell({ children }: { children: ReactNode }) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function ReviewAlert() {
+  const techs = useBoard((state) => state.techs);
+  const weeks = useBoard((state) => state.weeks);
+  const viewer = useBoard((state) => state.viewer);
+  const [open, setOpen] = useState(false);
+  const manager = techs.find((tech) => tech.id === viewer && tech.kind === "manager");
+  const crew = techs.filter((tech) => tech.kind === "technician" && tech.shopId === manager?.shopId);
+  const waiting = weeks.filter(
+    (week) => techReviewStage(week) === "manager" && crew.some((tech) => tech.id === week.techId),
+  );
+  if (!manager || waiting.length === 0) return null;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="relative inline-flex min-h-12 items-center rounded-md bg-honey px-3 font-display text-sm tracking-wide text-honey-fg uppercase italic"
+      >
+        Tech reviews
+        <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold text-honey">
+          {waiting.length}
+        </span>
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-30 mt-2 w-max max-w-[min(100vw-2.5rem,16rem)] rounded-md bg-surface p-1 shadow-border">
+          {waiting.map((week) => {
+            const tech = crew.find((item) => item.id === week.techId);
+            if (!tech) return null;
+            return (
+              <Link
+                key={`${week.techId}-${week.weekStart}`}
+                to="/t/$techId"
+                params={{ techId: tech.id }}
+                onClick={() => {
+                  focusReview(tech.id, week.weekStart);
+                  setOpen(false);
+                }}
+                className="block rounded px-3 py-2 text-right text-sm text-ink"
+              >
+                {tech.name}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

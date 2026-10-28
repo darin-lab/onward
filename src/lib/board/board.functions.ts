@@ -46,6 +46,8 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
+  if (saved.reviewStage === "locked") return saved;
+  if (incoming.reviewStage === "locked") return { ...saved, ...incoming, reviewStage: "locked" as const };
   const worked = (week: WeekLog) =>
     week.billedHours != null ||
     week.totalRecommendations != null ||
@@ -56,6 +58,7 @@ function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
     Boolean(week.practice);
   if (worked(saved) && !worked(incoming)) return saved;
   const next: WeekLog = { ...saved, ...incoming };
+  if (saved.reviewStage === "manager" && next.reviewStage !== "locked") next.reviewStage = "manager";
   const numbers = [
     "hours",
     "billedHours",
