@@ -86,7 +86,9 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [reviewing]);
-  const locked = Boolean(active && tech.kind === "manager" && active.submitted);
+  const locked = Boolean(
+    active && tech.kind === "manager" && active.submitted && active.darinReady && active.arunReady,
+  );
   const stage = tech.kind === "technician" ? techReviewStage(active) : "draft";
   const finished = tech.kind === "technician" && stage === "locked";
   const owner = isOwnerViewer(viewer);
@@ -261,7 +263,7 @@ export function TechView({ tech }: { tech: Tech }) {
             setReviewing(true);
           }}
         >
-          {active?.submitted ? "Edit" : "Review"}
+          Review
         </Button>
       ) : null}
     </div>
