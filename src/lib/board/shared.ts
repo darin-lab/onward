@@ -52,7 +52,7 @@ export function connectSharedBoard() {
 async function connect() {
   const remote = await loadBoard();
   if (remote) {
-    const { prelaunchCleared, ...rest } = remote;
+    const { prelaunchCleared: _prelaunchCleared, ...rest } = remote;
     const managerEmails: Record<string, string> = {
       "san-ramon": "sanramon@drivenautocare.com",
       "castro-valley": "castrovalley@drivenautocare.com",
@@ -83,15 +83,14 @@ async function connect() {
             shopId: "campbell",
           },
         ];
-    const clearWeeks = !prelaunchCleared;
-    const weeks = (clearWeeks ? [] : rest.weeks).filter((week) => week.techId !== "andre");
+    const weeks = rest.weeks.filter((week) => week.techId !== "andre");
     const changed =
       roster.length !== rest.techs.length ||
       roster.some((tech, index) => {
         const previous = rest.techs[index];
         return tech.id !== previous?.id || tech.name !== previous?.name || tech.email !== (previous?.email ?? "");
       }) ||
-      weeks.length !== (clearWeeks ? 0 : rest.weeks.length);
+      weeks.length !== rest.weeks.length;
     const categories = rest.categories.map((category) => {
       if (category.kind !== "manager") return category;
       const seed = seedCategories.find((item) => item.id === category.id);
@@ -116,7 +115,7 @@ async function connect() {
       categories,
       weeks,
     });
-    if (clearWeeks || changed || habitsChanged || addressChanged) {
+    if (changed || habitsChanged || addressChanged) {
       await saveBoard({ data: snapshot() });
     }
   } else {
@@ -131,5 +130,23 @@ async function connect() {
   }
   lastSaved = JSON.stringify(snapshot());
   ready = true;
+  useBoard.setState({ boardReady: true });
   useBoard.subscribe(() => scheduleSave());
+}
+
+export async function flushSharedBoard() {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  if (!ready) return;
+  const next = snapshot();
+  const encoded = JSON.stringify(next);
+  if (encoded === lastSaved) return;
+  lastSaved = encoded;
+  try {
+    await saveBoard({ data: next });
+  } catch {
+    lastSaved = "";
+  }
 }

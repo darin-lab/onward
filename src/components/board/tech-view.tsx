@@ -5,6 +5,7 @@ import { HabitChart, HoursChart } from "@/components/board/charts";
 import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
+import { flushSharedBoard } from "@/lib/board/shared";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import {
   LEVELS,
@@ -57,6 +58,7 @@ export function TechView({ tech }: { tech: Tech }) {
   const viewer = useBoard((state) => state.viewer);
   const [reviewing, setReviewing] = useState(false);
   const canLog = canReview(viewer, tech, techs);
+  const boardReady = useBoard((state) => state.boardReady);
   const canOpenUpcoming = Boolean(canLog && upcoming && upcoming !== active?.weekStart);
   const openLater = () => {
     if (next) {
@@ -69,14 +71,14 @@ export function TechView({ tech }: { tech: Tech }) {
     if (tech.kind === "manager" && !isWeekLocked(upcoming)) setReviewing(true);
   };
   useEffect(() => {
-    if (!canLog) return;
+    if (!boardReady || !canLog) return;
     const last = priorWeekISO();
     const have = new Set(
       useBoard.getState().weeks.filter((week) => week.techId === tech.id).map((week) => week.weekStart),
     );
     if (!have.has(last)) startWeek(tech.id, last);
     setPicked((current) => current ?? last);
-  }, [canLog, tech.id, startWeek]);
+  }, [boardReady, canLog, tech.id, startWeek]);
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1338,10 +1340,11 @@ function techFigures(input: {
     input.billedHours != null && input.serviceHours != null && input.serviceHours > 0
       ? Math.round((input.billedHours / input.serviceHours) * 1000) / 10
       : null;
+  const recsPerVehicle = recsFromTotal(input.totalRecommendations, cars);
   return {
-    cars,
-    recsPerVehicle: recsFromTotal(input.totalRecommendations, cars),
-    efficiency,
+    ...(cars != null ? { cars } : {}),
+    ...(recsPerVehicle != null ? { recsPerVehicle } : {}),
+    ...(efficiency != null ? { efficiency } : {}),
   };
 }
 
@@ -1512,14 +1515,14 @@ function LeadWriter({
               ...latest,
               submitted: tech.kind === "technician" ? latest.submitted : true,
             });
-            onDone();
+            void flushSharedBoard().finally(onDone);
           }}
         >
           {tech.kind === "technician" ? "Save and exit" : "Submit"}
         </Button>
         <p className="text-sm text-muted">
           {tech.kind === "technician"
-            ? "Saved as you go. Leave and come back anytime."
+            ? "Save and exit before you leave. Opening this page will not erase it."
             : week.submitted
               ? "This week is submitted."
               : "Submit when the week is filled in."}

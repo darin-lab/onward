@@ -28,6 +28,7 @@ type BoardState = {
   lens: string;
   viewer: string;
   sampleCrew: boolean;
+  boardReady: boolean;
   setLens: (lens: string) => void;
   setViewer: (viewer: string) => void;
   updateTech: (id: string, patch: Partial<Pick<Tech, "name" | "role" | "email">>) => void;
@@ -64,6 +65,7 @@ export const useBoard = create<BoardState>()(
       viewer: "guest",
       calls: [],
       cashTransfers: [],
+      boardReady: false,
       setLens: (lens) => set({ lens }),
       setViewer: (viewer) => {
         const person = get().techs.find((tech) => tech.id === viewer);
@@ -186,6 +188,7 @@ export const useBoard = create<BoardState>()(
         })),
       startWeek: (techId, weekStart) => {
         const state = get();
+        if (state.weeks.some((week) => week.techId === techId && week.weekStart === weekStart)) return;
         const person = state.techs.find((tech) => tech.id === techId);
         const previous =
           state.weeks
@@ -233,6 +236,7 @@ export const useBoard = create<BoardState>()(
           dayReports: state.dayReports ?? [],
           calls: state.calls ?? [],
           cashTransfers: state.cashTransfers ?? [],
+          boardReady: false,
         });
       },
       partialize: (state) => ({

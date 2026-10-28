@@ -45,6 +45,56 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
   return asSnapshot(parsed);
 });
 
+function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
+  const worked = (week: WeekLog) =>
+    week.billedHours != null ||
+    week.totalRecommendations != null ||
+    week.serviceHours != null ||
+    week.hoursPerRepairOrder != null ||
+    Boolean(week.working) ||
+    Boolean(week.practice);
+  if (worked(saved) && !worked(incoming)) return saved;
+  const next: WeekLog = { ...saved, ...incoming };
+  const numbers = [
+    "hours",
+    "billedHours",
+    "cars",
+    "totalRecommendations",
+    "recsPerVehicle",
+    "totalSales",
+    "sellThrough",
+    "averageRepairOrder",
+    "hoursPerRepairOrder",
+    "salesPerBilledHour",
+    "grossProfit",
+    "efficiency",
+    "serviceHours",
+  ] as const;
+  for (const key of numbers) {
+    if (incoming[key] == null && saved[key] != null) next[key] = saved[key];
+  }
+  const notes = ["billedNote", "carsNote", "recsNote", "efficiencyNote", "working", "practice"] as const;
+  for (const key of notes) {
+    if (!incoming[key] && saved[key]) next[key] = saved[key];
+  }
+  if ((!incoming.boomerangs || incoming.boomerangs.length === 0) && saved.boomerangs?.length) {
+    next.boomerangs = saved.boomerangs;
+  }
+  if (saved.submitted) next.submitted = true;
+  return next;
+}
+
+function mergeWeeks(saved: WeekLog[], incoming: WeekLog[]) {
+  const byKey = new Map<string, WeekLog>();
+  for (const week of saved) byKey.set(`${week.techId}:${week.weekStart}`, week);
+  for (const week of incoming) {
+    const key = `${week.techId}:${week.weekStart}`;
+    const previous = byKey.get(key);
+    byKey.set(key, previous ? mergeWeek(previous, week) : week);
+  }
+  return [...byKey.values()];
+}
+
 function mergeCash(saved: CashTransfer[], incoming: CashTransfer[]) {
   const byId = new Map(saved.map((item) => [item.id, item]));
   for (const item of incoming) {
@@ -93,6 +143,7 @@ export const saveBoard = createServerFn({ method: "POST" })
       const saved = asSnapshot(parsed);
       data.calls = mergeCalls(saved.calls, data.calls);
       data.cashTransfers = mergeCash(saved.cashTransfers, data.cashTransfers);
+      data.weeks = mergeWeeks(saved.weeks, data.weeks);
     }
     await sql.query(
       `insert into board_state (id, data, updated_at)
