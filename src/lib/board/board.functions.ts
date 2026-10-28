@@ -51,6 +51,7 @@ function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
     week.totalRecommendations != null ||
     week.serviceHours != null ||
     week.hoursPerRepairOrder != null ||
+    week.grossProfit != null ||
     Boolean(week.working) ||
     Boolean(week.practice);
   if (worked(saved) && !worked(incoming)) return saved;

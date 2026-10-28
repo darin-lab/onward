@@ -95,16 +95,13 @@ export function TechView({ tech }: { tech: Tech }) {
     void pullShopRange({ data: { shopId: tech.shopId, start: weekStart, end } }).then((result) => {
       if (cancel || !result.ok) return;
       const state = useBoard.getState();
-      if (!state.weeks.some((week) => week.techId === tech.id && week.weekStart === weekStart)) {
-        state.startWeek(tech.id, weekStart);
-      }
-      const current = useBoard.getState().weeks.find(
+      const current = state.weeks.find(
         (week) => week.techId === tech.id && week.weekStart === weekStart,
       );
       if (!current) return;
       const week = result.week;
       const pick = (kept: number | null, incoming: number | null) =>
-        current.submitted ? (kept ?? incoming) : (incoming ?? kept);
+        current.submitted || kept != null ? (kept ?? incoming) : incoming;
       const next = {
         ...current,
         totalSales: pick(current.totalSales, week.totalSales),
@@ -112,12 +109,15 @@ export function TechView({ tech }: { tech: Tech }) {
         averageRepairOrder: pick(current.averageRepairOrder, week.averageRepairOrder),
         hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week.hoursPerRepairOrder),
         recsPerVehicle:
-          current.totalRecommendations != null
+          current.totalRecommendations != null || current.recsPerVehicle != null
             ? current.recsPerVehicle
-            : pick(current.recsPerVehicle, week.recsPerVehicle),
+            : week.recsPerVehicle,
         salesPerBilledHour: pick(current.salesPerBilledHour, week.salesPerBilledHour),
         billedHours: pick(current.billedHours, week.billedHours),
         cars: pick(current.cars, week.cars),
+        grossProfit: current.grossProfit,
+        working: current.working,
+        practice: current.practice,
       };
       const same =
         next.totalSales === current.totalSales &&
