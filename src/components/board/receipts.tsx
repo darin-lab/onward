@@ -92,11 +92,15 @@ export function ReceiptDesk() {
                 },
               }),
             )
-            .then(() => {
+            .then((result) => {
               setTotal("");
               setNote("");
               setFile(null);
-              setMessage("Saved. These go out after 7:06pm. Anything entered after that goes the next day.");
+              setMessage(
+                result.mailed
+                  ? "Saved and emailed to you and accounting."
+                  : "Saved. The email did not go out. The receipt is still here.",
+              );
               refresh();
             })
             .catch(() => setMessage("That receipt did not save."))

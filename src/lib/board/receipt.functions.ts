@@ -89,12 +89,18 @@ export const addReceipt = createServerFn({ method: "POST" })
         day,
       ],
     );
-    return { ok: true as const, id, day };
+    await mailUnsentReceipts();
+    const saved = await sql.query<{ mailed_at: string | null }>(
+      `select mailed_at from receipts where id = $1`,
+      [id],
+    );
+    return { ok: true as const, id, day, mailed: Boolean(saved[0]?.mailed_at) };
   });
 
 export const listReceipts = createServerFn({ method: "GET" }).handler(async () => {
   const { requireReceiptUser } = await import("@/lib/board/darin.server");
   const session = await requireReceiptUser();
+  await mailUnsentReceipts().catch(() => undefined);
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<{ id: string; total: string | number; note: string; day: string; image_name: string | null }>(
@@ -131,52 +137,18 @@ function pacificClock(now = new Date()) {
   };
 }
 
-function pacificWallTime(day: string, hour: number, minute: number) {
-  const [year, month, date] = day.split("-").map(Number);
-  const wall = new Date(Date.UTC(year, month - 1, date, hour, minute, 0));
-  const offset = (instant: Date) => {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Los_Angeles",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(instant);
-    const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-    const asUtc = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
-    return instant.getTime() - asUtc;
-  };
-  const first = new Date(wall.getTime() + offset(wall));
-  return new Date(wall.getTime() + offset(first));
+export async function sendDueReceipts() {
+  return mailUnsentReceipts();
 }
 
-function previousPacificDay(day: string) {
-  const [year, month, date] = day.split("-").map(Number);
-  const next = new Date(Date.UTC(year, month - 1, date));
-  next.setUTCDate(next.getUTCDate() - 1);
-  return next.toISOString().slice(0, 10);
-}
-
-function dueCutoff(now = new Date()) {
-  const clock = pacificClock(now);
-  const tonight = pacificWallTime(clock.day, 19, 6);
-  if (now.getTime() >= tonight.getTime()) return tonight;
-  return pacificWallTime(previousPacificDay(clock.day), 19, 6);
-}
-
-export async function sendDueReceipts(now = new Date()) {
-  const cutoff = dueCutoff(now);
+async function mailUnsentReceipts() {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<ReceiptRow>(
     `select id, total, note, image_data, image_type, image_name, submitter_id, submitter_email, submitter_name, day, created_at, mailed_at
      from receipts
-     where mailed_at is null and created_at < $1
+     where mailed_at is null
      order by created_at`,
-    [cutoff.toISOString()],
   );
   if (rows.length === 0) return { ok: true as const, sent: 0 };
   const user = process.env.GMAIL_USER?.trim();
@@ -196,7 +168,7 @@ export async function sendDueReceipts(now = new Date()) {
     secure: true,
     auth: { user, pass },
   });
-  const clock = pacificClock(cutoff);
+  const clock = pacificClock();
   const when = readableDay(clock.day);
   const stamp = `${clock.day.slice(5, 7)}-${clock.day.slice(8, 10)}-${clock.day.slice(0, 4)}`;
   let sent = 0;
@@ -261,7 +233,7 @@ async function receiptPlaces() {
 }
 
 function receiptText(when: string, items: ReceiptRow[], total: number) {
-  const lines = items.map((item, index) => `${index + 1}. ${money(Number(item.total))}\n${item.note}\n${item.submitter_name}`);
+  const lines = items.map((item, index) => `${index + 1}. ${item.day} ${money(Number(item.total))}\n${item.note}\n${item.submitter_name}`);
   return ["Receipts", when, "", ...lines.flatMap((line) => [line, ""]), `Total ${money(total)}`].join("\n");
 }
 
