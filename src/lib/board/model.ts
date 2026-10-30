@@ -64,6 +64,7 @@ export type WeekLog = {
   darinReady?: boolean;
   arunReady?: boolean;
   updatedAt?: string;
+  snapshotAt?: string;
 };
 
 export const DAY_FIELDS = [

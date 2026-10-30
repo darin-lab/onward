@@ -244,7 +244,11 @@ export function TechView({ tech }: { tech: Tech }) {
           </>
         ) : (
           <>
-            <ManagerWeek week={active} writing={writing} sheet={reviewFrozen(active) ? null : sheet} />
+            <ManagerWeek
+              week={active}
+              writing={writing}
+              sheet={writing || !active.snapshotAt ? sheet : null}
+            />
             {writing ? (
               <HabitMarks week={active} kind={tech.kind} />
             ) : (
@@ -281,8 +285,11 @@ export function TechView({ tech }: { tech: Tech }) {
           upcoming={upcoming}
           capture={(current) => {
             const signed = Boolean(current.submitted && current.darinReady && current.arunReady);
+            const live = sheetRef.current;
             let next =
-              signed || isWeekLocked(current.weekStart) ? current : applySheet(current, sheetRef.current);
+              !signed && live
+                ? { ...applySheet(current, live), snapshotAt: new Date().toISOString() }
+                : current;
             const typed = typedGrossProfit();
             if (typed !== undefined && !signed) next = { ...next, grossProfit: typed };
             const working = typedNote("working");
@@ -589,6 +596,9 @@ function ManagerWeek({
   const rest = fields.slice(1);
   return (
     <Card className="mt-6">
+      <p className="mb-4 text-sm text-muted">
+        {sheet ? "From the dashboard for this week." : week.snapshotAt ? "Saved with this review." : "From the dashboard for this week."}
+      </p>
       {sales ? (
         <div>
           <div className="flex items-baseline justify-between gap-2">

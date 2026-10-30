@@ -211,21 +211,5 @@ export const saveWeek = createServerFn({ method: "POST" })
        set data = excluded.data, updated_at = now()`,
       [data.techId, data.weekStart, JSON.stringify(data)],
     );
-    const rows = await sql.query<{ data: string }>(
-      "select data from board_state where id = $1",
-      ["main"],
-    );
-    const raw = rows[0]?.data;
-    if (raw) {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      const saved = asSnapshot(parsed);
-      saved.weeks = overlayWeeks(mergeWeeks(saved.weeks, [data]), [data]);
-      await sql.query(
-        `insert into board_state (id, data, updated_at)
-         values ($1, $2, now())
-         on conflict (id) do update set data = excluded.data, updated_at = now()`,
-        ["main", JSON.stringify(saved)],
-      );
-    }
     return { ok: true as const, week: data };
   });
