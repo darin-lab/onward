@@ -32,6 +32,31 @@ function asSnapshot(input: unknown): BoardSnapshot {
   };
 }
 
+async function weekRows(sql: Awaited<ReturnType<typeof import("@/lib/db").getSql>>) {
+  await sql.query(
+    `create table if not exists week_logs (
+      tech_id text not null,
+      week_start text not null,
+      data text not null,
+      updated_at timestamptz not null default now(),
+      primary key (tech_id, week_start)
+    )`,
+  );
+  const rows = await sql.query<{ data: string }>("select data from week_logs");
+  return rows.map((row) => (typeof row.data === "string" ? JSON.parse(row.data) : row.data) as WeekLog);
+}
+
+function overlayWeeks(weeks: WeekLog[], stored: WeekLog[]) {
+  const byKey = new Map<string, WeekLog>();
+  for (const week of weeks) byKey.set(`${week.techId}:${week.weekStart}`, week);
+  for (const week of stored) {
+    const key = `${week.techId}:${week.weekStart}`;
+    const previous = byKey.get(key);
+    if (!previous || (week.updatedAt ?? "") >= (previous.updatedAt ?? "")) byKey.set(key, { ...previous, ...week });
+  }
+  return [...byKey.values()];
+}
+
 export const loadBoard = createServerFn({ method: "POST" }).handler(async () => {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
@@ -42,7 +67,9 @@ export const loadBoard = createServerFn({ method: "POST" }).handler(async () => 
   const raw = rows[0]?.data;
   if (!raw) return null;
   const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return asSnapshot(parsed);
+  const snapshot = asSnapshot(parsed);
+  snapshot.weeks = overlayWeeks(snapshot.weeks, await weekRows(sql));
+  return snapshot;
 });
 
 function sealed(week: WeekLog) {
@@ -155,6 +182,7 @@ export const saveBoard = createServerFn({ method: "POST" })
       data.cashTransfers = mergeCash(saved.cashTransfers, data.cashTransfers);
       data.weeks = mergeWeeks(saved.weeks, data.weeks);
     }
+    data.weeks = overlayWeeks(data.weeks, await weekRows(sql));
     await sql.query(
       `insert into board_state (id, data, updated_at)
        values ($1, $2, now())
@@ -176,22 +204,28 @@ export const saveWeek = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
+    await sql.query(
+      `insert into week_logs (tech_id, week_start, data, updated_at)
+       values ($1, $2, $3, now())
+       on conflict (tech_id, week_start) do update
+       set data = excluded.data, updated_at = now()`,
+      [data.techId, data.weekStart, JSON.stringify(data)],
+    );
     const rows = await sql.query<{ data: string }>(
       "select data from board_state where id = $1",
       ["main"],
     );
     const raw = rows[0]?.data;
-    if (!raw) throw new Error("Board is not ready");
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const saved = asSnapshot(parsed);
-    saved.weeks = mergeWeeks(saved.weeks, [data]);
-    await sql.query(
-      `insert into board_state (id, data, updated_at)
-       values ($1, $2, now())
-       on conflict (id) do update set data = excluded.data, updated_at = now()`,
-      ["main", JSON.stringify(saved)],
-    );
-    const week = saved.weeks.find((item) => item.techId === data.techId && item.weekStart === data.weekStart);
-    if (!week) throw new Error("Week was not stored");
-    return { ok: true as const, week };
+    if (raw) {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const saved = asSnapshot(parsed);
+      saved.weeks = overlayWeeks(mergeWeeks(saved.weeks, [data]), [data]);
+      await sql.query(
+        `insert into board_state (id, data, updated_at)
+         values ($1, $2, now())
+         on conflict (id) do update set data = excluded.data, updated_at = now()`,
+        ["main", JSON.stringify(saved)],
+      );
+    }
+    return { ok: true as const, week: data };
   });
