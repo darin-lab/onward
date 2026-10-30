@@ -7,7 +7,7 @@ import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 import { flushSharedBoard } from "@/lib/board/shared";
 import { mailManagerReview } from "@/lib/board/mail-manager.functions";
-import { pullShopRange } from "@/lib/board/dashboard.functions";
+import { pullShopRange, type ShopPull } from "@/lib/board/dashboard.functions";
 import {
   LEVELS,
   canReview,
@@ -43,6 +43,41 @@ function thursdayOf(monday: string) {
   const [year, month, day] = monday.split("-").map(Number);
   const date = new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1));
   date.setUTCDate(date.getUTCDate() + 3);
+  return date.toISOString().slice(0, 10);
+}
+
+function applySheet(week: WeekLog, sheet: ShopPull["week"] | null) {
+  if (!sheet) return week;
+  const keep = (incoming: number | null, kept: number | null) => incoming ?? kept;
+  const cars = keep(sheet.cars, week.cars);
+  const recsPerVehicle = keep(sheet.recsPerVehicle, week.recsPerVehicle);
+  return {
+    ...week,
+    totalSales: keep(sheet.totalSales, week.totalSales),
+    sellThrough: keep(sheet.sellThrough, week.sellThrough),
+    averageRepairOrder: keep(sheet.averageRepairOrder, week.averageRepairOrder),
+    hoursPerRepairOrder: keep(sheet.hoursPerRepairOrder, week.hoursPerRepairOrder),
+    recsPerVehicle,
+    totalRecommendations:
+      recsPerVehicle != null && cars != null
+        ? Math.round(recsPerVehicle * cars * 100) / 100
+        : week.totalRecommendations,
+    salesPerBilledHour: keep(sheet.salesPerBilledHour, week.salesPerBilledHour),
+    billedHours: keep(sheet.billedHours, week.billedHours),
+    cars,
+  };
+}
+
+function reviewFrozen(week: WeekLog) {
+  return Boolean(week.submitted && week.darinReady && week.arunReady) || isWeekLocked(week.weekStart);
+}
+
+function mondayOf(iso: string) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1));
+  const weekday = date.getUTCDay();
+  const back = weekday === 0 ? 6 : weekday - 1;
+  date.setUTCDate(date.getUTCDate() - back);
   return date.toISOString().slice(0, 10);
 }
 
@@ -99,55 +134,21 @@ export function TechView({ tech }: { tech: Tech }) {
       ? canReview(viewer, tech, techs) && !locked && reviewing
       : editNumbers || editNotes;
   const visible = canViewReview(viewer, tech, techs);
+  const [sheet, setSheet] = useState<ShopPull["week"] | null>(null);
+  const sheetRef = useRef<ShopPull["week"] | null>(null);
 
   useEffect(() => {
     if (tech.kind !== "manager" || !visible) return;
     const weekStart = active?.weekStart ?? priorWeekISO();
     let cancel = false;
-    const end = thursdayOf(weekStart);
-    void pullShopRange({ data: { shopId: tech.shopId, start: weekStart, end } }).then((result) => {
-      if (cancel) return;
-      const state = useBoard.getState();
-      const current = state.weeks.find(
-        (week) => week.techId === tech.id && week.weekStart === weekStart,
-      );
-      if (!current) return;
-      const week = result.ok ? result.week : null;
-      const pick = (kept: number | null, incoming: number | null) =>
-        current.submitted || kept != null ? (kept ?? incoming) : incoming;
-      const cars = pick(current.cars, week?.cars ?? null);
-      const recsPerVehicle = pick(current.recsPerVehicle, week?.recsPerVehicle ?? null);
-      const totalRecommendations =
-        current.totalRecommendations ??
-        (recsPerVehicle != null && cars != null
-          ? Math.round(recsPerVehicle * cars * 100) / 100
-          : null);
-      const next = {
-        ...current,
-        totalSales: pick(current.totalSales, week?.totalSales ?? null),
-        sellThrough: pick(current.sellThrough, week?.sellThrough ?? null),
-        averageRepairOrder: pick(current.averageRepairOrder, week?.averageRepairOrder ?? null),
-        hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week?.hoursPerRepairOrder ?? null),
-        recsPerVehicle,
-        totalRecommendations,
-        salesPerBilledHour: pick(current.salesPerBilledHour, week?.salesPerBilledHour ?? null),
-        billedHours: pick(current.billedHours, week?.billedHours ?? null),
-        cars,
-        grossProfit: current.grossProfit,
-        working: current.working,
-        practice: current.practice,
-      };
-      const same =
-        next.totalSales === current.totalSales &&
-        next.sellThrough === current.sellThrough &&
-        next.averageRepairOrder === current.averageRepairOrder &&
-        next.hoursPerRepairOrder === current.hoursPerRepairOrder &&
-        next.recsPerVehicle === current.recsPerVehicle &&
-        next.totalRecommendations === current.totalRecommendations &&
-        next.salesPerBilledHour === current.salesPerBilledHour &&
-        next.billedHours === current.billedHours &&
-        next.cars === current.cars;
-      if (!same) state.upsertWeek(next);
+    sheetRef.current = null;
+    setSheet(null);
+    const monday = mondayOf(weekStart);
+    const end = thursdayOf(monday);
+    void pullShopRange({ data: { shopId: tech.shopId, start: monday, end } }).then((result) => {
+      if (cancel || !result.ok) return;
+      sheetRef.current = result.week;
+      setSheet(result.week);
     });
     return () => {
       cancel = true;
@@ -217,7 +218,7 @@ export function TechView({ tech }: { tech: Tech }) {
           </>
         ) : (
           <>
-            <ManagerWeek week={active} writing={writing} />
+            <ManagerWeek week={active} writing={writing} sheet={reviewFrozen(active) ? null : sheet} />
             {writing ? (
               <HabitMarks week={active} kind={tech.kind} />
             ) : (
@@ -252,6 +253,7 @@ export function TechView({ tech }: { tech: Tech }) {
           tech={tech}
           week={active}
           upcoming={upcoming}
+          capture={(current) => (reviewFrozen(current) ? current : applySheet(current, sheetRef.current))}
           onStart={(weekStart) => {
             startWeek(tech.id, weekStart);
             setPicked(weekStart);
@@ -443,11 +445,20 @@ function WeekSwitcher({
   );
 }
 
-function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
+function ManagerWeek({
+  week,
+  writing,
+  sheet,
+}: {
+  week: WeekLog;
+  writing: boolean;
+  sheet: ShopPull["week"] | null;
+}) {
   const upsertWeek = useBoard((state) => state.upsertWeek);
   const techs = useBoard((state) => state.techs);
   const weeks = useBoard((state) => state.weeks);
   const ranks = managerRanks(techs, weeks, week.weekStart, week.techId);
+  const shown = sheet ? applySheet(week, sheet) : week;
   const ranked = [
     ranks.totalSales,
     ranks.sellThrough,
@@ -466,80 +477,69 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
     text: string;
     goal?: string;
     met?: (n: number) => boolean;
-    commit: (value: number | null) => void;
+    edit?: boolean;
     total?: boolean;
   }[] = [
     {
       id: "total-sales",
       label: "Total sales",
-      value: week.totalSales,
+      value: shown.totalSales,
       max: 1000000,
       rank: ranks.totalSales,
-      text: week.totalSales == null ? "—" : formatMoney(week.totalSales),
+      text: shown.totalSales == null ? "—" : formatMoney(shown.totalSales),
       goal: "Goal $32,000",
       met: (n) => n >= 32000,
-      commit: (totalSales) => upsertWeek({ ...week, totalSales }),
     },
     {
       id: "sell-through",
       label: "Sell through percentage",
-      value: week.sellThrough,
+      value: shown.sellThrough,
       max: 100,
       rank: ranks.sellThrough,
-      text: week.sellThrough == null ? "—" : `${formatHours(week.sellThrough)}%`,
+      text: shown.sellThrough == null ? "—" : `${formatHours(shown.sellThrough)}%`,
       goal: "Goal 25–30%",
       met: (n) => n >= 25 && n <= 30,
-      commit: (sellThrough) => upsertWeek({ ...week, sellThrough }),
     },
     {
       id: "average-ro",
       label: "ARO",
-      value: week.averageRepairOrder,
+      value: shown.averageRepairOrder,
       max: 20000,
       rank: ranks.averageRepairOrder,
-      text: week.averageRepairOrder == null ? "—" : formatMoney(week.averageRepairOrder),
+      text: shown.averageRepairOrder == null ? "—" : formatMoney(shown.averageRepairOrder),
       goal: "Goal $1,200",
       met: (n) => n >= 1200,
-      commit: (averageRepairOrder) => upsertWeek({ ...week, averageRepairOrder }),
     },
     {
       id: "hours-per-ro",
       label: "Hours per repair order",
-      value: week.hoursPerRepairOrder,
+      value: shown.hoursPerRepairOrder,
       max: 40,
       rank: ranks.hoursPerRepairOrder,
-      text: week.hoursPerRepairOrder == null ? "—" : formatHours(week.hoursPerRepairOrder),
+      text: shown.hoursPerRepairOrder == null ? "—" : formatHours(shown.hoursPerRepairOrder),
       goal: "Goal 3",
       met: (n) => n >= 3,
-      commit: (hoursPerRepairOrder) => upsertWeek({ ...week, hoursPerRepairOrder }),
     },
     {
       id: "recs-per-car",
       label: "Recommendation per car",
-      value: week.totalRecommendations,
+      value: shown.recsPerVehicle,
       max: 200000,
       rank: ranks.recsPerVehicle,
-      text: week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle),
+      text: shown.recsPerVehicle == null ? "—" : formatMoney(shown.recsPerVehicle),
       goal: "Goal $2,800",
       met: (n) => n >= 2800,
       total: true,
-      commit: (totalRecommendations) =>
-        upsertWeek({
-          ...week,
-          totalRecommendations,
-          recsPerVehicle: recsFromTotal(totalRecommendations, week.cars),
-        }),
     },
     {
       id: "sales-per-hour",
       label: "Sales per billed hour",
-      value: week.salesPerBilledHour,
+      value: shown.salesPerBilledHour,
       max: 2000,
       rank: ranks.salesPerBilledHour,
-      text: week.salesPerBilledHour == null ? "—" : formatMoney(week.salesPerBilledHour),
+      text: shown.salesPerBilledHour == null ? "—" : formatMoney(shown.salesPerBilledHour),
       goal: "Goal $400",
       met: (n) => n >= 400,
-      commit: (salesPerBilledHour) => upsertWeek({ ...week, salesPerBilledHour }),
     },
     {
       id: "gross-profit",
@@ -548,7 +548,7 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
       max: 100000,
       rank: ranks.grossProfit,
       text: week.grossProfit == null ? "—" : formatMoney(week.grossProfit),
-      commit: (grossProfit) => upsertWeek({ ...week, grossProfit }),
+      edit: true,
     },
   ];
   const sales = fields[0];
@@ -561,24 +561,12 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
             <p className="text-sm text-muted">{sales.label}</p>
             {sales.goal ? <p className="shrink-0 text-xs text-muted">{sales.goal}</p> : null}
           </div>
-          {writing ? (
-            <DecimalField
-              key={`${week.weekStart}-${sales.id}`}
-              id={sales.id}
-              label=""
-              value={sales.value}
-              max={sales.max}
-              onCommit={sales.commit}
-              met={sales.met}
-            />
-          ) : (
-            <p
-              className="mt-1 font-display text-3xl font-semibold tabular-nums"
-              style={{ color: sales.met ? goalColor(sales.value, sales.met) : undefined }}
-            >
-              {sales.text}
-            </p>
-          )}
+          <p
+            className="mt-1 font-display text-3xl font-semibold tabular-nums"
+            style={{ color: sales.met ? goalColor(sales.value, sales.met) : undefined }}
+          >
+            {sales.text}
+          </p>
           <RankLine rank={sales.rank} total={ranks.total} />
         </div>
       ) : null}
@@ -589,26 +577,15 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
               <p className="text-sm text-muted">{field.label}</p>
               {field.goal ? <p className="shrink-0 text-xs text-muted">{field.goal}</p> : null}
             </div>
-            {writing ? (
-              <>
-                <DecimalField
-                  key={`${week.weekStart}-${field.id}`}
-                  id={field.id}
-                  label={field.total ? "Total recommendations" : ""}
-                  value={field.value}
-                  max={field.max}
-                  onCommit={field.commit}
-                  met={field.total ? undefined : field.met}
-                />
-                {field.total ? (
-                  <p
-                    className="mt-1 font-display text-2xl font-semibold tabular-nums"
-                    style={{ color: field.met ? goalColor(week.recsPerVehicle, field.met) : undefined }}
-                  >
-                    {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
-                  </p>
-                ) : null}
-              </>
+            {writing && field.edit ? (
+              <DecimalField
+                key={`${week.weekStart}-${field.id}`}
+                id={field.id}
+                label=""
+                value={field.value}
+                max={field.max}
+                onCommit={(grossProfit) => upsertWeek({ ...week, grossProfit })}
+              />
             ) : (
               <p
                 className="mt-1 font-display text-2xl font-semibold tabular-nums"
@@ -617,6 +594,12 @@ function ManagerWeek({ week, writing }: { week: WeekLog; writing: boolean }) {
                 {field.text}
               </p>
             )}
+            {field.total ? (
+              <p className="mt-1 text-sm tabular-nums text-muted">
+                Total recommendations{" "}
+                {shown.totalRecommendations == null ? "—" : formatMoney(shown.totalRecommendations)}
+              </p>
+            ) : null}
             <RankLine rank={field.rank} total={ranks.total} />
           </li>
         ))}
@@ -1472,6 +1455,7 @@ function LeadWriter({
   onStart,
   onDone,
   actor,
+  capture,
 }: {
   tech: Tech;
   week: WeekLog | null;
@@ -1479,6 +1463,7 @@ function LeadWriter({
   onStart: (weekStart: string) => void;
   onDone: () => void;
   actor?: "owner" | "manager";
+  capture?: (week: WeekLog) => WeekLog;
 }) {
   const upsertWeek = useBoard((state) => state.upsertWeek);
   const removeTech = useBoard((state) => state.removeTech);
@@ -1678,6 +1663,7 @@ function LeadWriter({
           setSending={setSending}
           onKeep={keep}
           onDone={onDone}
+          capture={capture}
         />
       ) : null}
 
@@ -1705,6 +1691,7 @@ function ManagerSignOff({
   setSending,
   onKeep,
   onDone,
+  capture,
 }: {
   tech: Tech;
   week: WeekLog;
@@ -1712,16 +1699,20 @@ function ManagerSignOff({
   setSending: (value: boolean) => void;
   onKeep: (next: WeekLog, leave: boolean) => Promise<void>;
   onDone: () => void;
+  capture?: (week: WeekLog) => WeekLog;
 }) {
   const viewer = useBoard((state) => state.viewer);
   const shops = useBoard((state) => state.shops);
   const categories = categoriesFor(useBoard((state) => state.categories), "manager");
   const [asking, setAsking] = useState<"darin" | "arun" | null>(null);
   const [savedNote, setSavedNote] = useState("");
-  const latest = () =>
-    useBoard.getState().weeks.find(
-      (item) => item.techId === week.techId && item.weekStart === week.weekStart,
-    ) ?? week;
+  const latest = () => {
+    const current =
+      useBoard.getState().weeks.find(
+        (item) => item.techId === week.techId && item.weekStart === week.weekStart,
+      ) ?? week;
+    return capture ? capture(current) : current;
+  };
   const settle = () =>
     new Promise<void>((resolve) => {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
