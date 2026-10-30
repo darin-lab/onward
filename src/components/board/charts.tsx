@@ -60,6 +60,20 @@ function Tip({
   );
 }
 
+function wholeAxis(value: number, format: (value: number) => string) {
+  const rounded = Math.round(value);
+  const sample = format(1000.5);
+  if (sample.includes("$")) {
+    return rounded.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    });
+  }
+  if (sample.includes("%")) return `${rounded}%`;
+  return String(rounded);
+}
+
 function readTip(payload: unknown): { label?: string; value?: unknown } {
   if (!Array.isArray(payload) || payload.length === 0) return {};
   const row = payload[0] as { payload?: { label?: string }; value?: unknown } | undefined;
@@ -138,6 +152,8 @@ export function HoursChart({
   const pad = Math.max(span * 0.35, 0.5);
   const yMin = Math.max(0, minHours - pad);
   const yMax = maxHours + pad;
+  const axisLabels = [yMin, yMax, maxHours].map((value) => wholeAxis(value, format));
+  const axisWidth = Math.max(36, ...axisLabels.map((text) => text.length * 9));
   const fillId = `arc-${metric}`;
 
   return (
@@ -161,11 +177,11 @@ export function HoursChart({
             />
             <YAxis
               domain={[yMin, yMax]}
-              width={maxHours >= 1000 ? 52 : 36}
+              width={axisWidth}
               tick={{ fill: "var(--color-muted)", fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              tickFormatter={(value: number) => format(value)}
+              tickFormatter={(value: number) => wholeAxis(value, format)}
             />
             <Tooltip
               cursor={{ stroke: "var(--color-line)" }}
