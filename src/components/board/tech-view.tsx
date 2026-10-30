@@ -106,28 +106,33 @@ export function TechView({ tech }: { tech: Tech }) {
     let cancel = false;
     const end = thursdayOf(weekStart);
     void pullShopRange({ data: { shopId: tech.shopId, start: weekStart, end } }).then((result) => {
-      if (cancel || !result.ok) return;
+      if (cancel) return;
       const state = useBoard.getState();
       const current = state.weeks.find(
         (week) => week.techId === tech.id && week.weekStart === weekStart,
       );
       if (!current) return;
-      const week = result.week;
+      const week = result.ok ? result.week : null;
       const pick = (kept: number | null, incoming: number | null) =>
         current.submitted || kept != null ? (kept ?? incoming) : incoming;
+      const cars = pick(current.cars, week?.cars ?? null);
+      const recsPerVehicle = pick(current.recsPerVehicle, week?.recsPerVehicle ?? null);
+      const totalRecommendations =
+        current.totalRecommendations ??
+        (recsPerVehicle != null && cars != null
+          ? Math.round(recsPerVehicle * cars * 100) / 100
+          : null);
       const next = {
         ...current,
-        totalSales: pick(current.totalSales, week.totalSales),
-        sellThrough: pick(current.sellThrough, week.sellThrough),
-        averageRepairOrder: pick(current.averageRepairOrder, week.averageRepairOrder),
-        hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week.hoursPerRepairOrder),
-        recsPerVehicle:
-          current.totalRecommendations != null || current.recsPerVehicle != null
-            ? current.recsPerVehicle
-            : week.recsPerVehicle,
-        salesPerBilledHour: pick(current.salesPerBilledHour, week.salesPerBilledHour),
-        billedHours: pick(current.billedHours, week.billedHours),
-        cars: pick(current.cars, week.cars),
+        totalSales: pick(current.totalSales, week?.totalSales ?? null),
+        sellThrough: pick(current.sellThrough, week?.sellThrough ?? null),
+        averageRepairOrder: pick(current.averageRepairOrder, week?.averageRepairOrder ?? null),
+        hoursPerRepairOrder: pick(current.hoursPerRepairOrder, week?.hoursPerRepairOrder ?? null),
+        recsPerVehicle,
+        totalRecommendations,
+        salesPerBilledHour: pick(current.salesPerBilledHour, week?.salesPerBilledHour ?? null),
+        billedHours: pick(current.billedHours, week?.billedHours ?? null),
+        cars,
         grossProfit: current.grossProfit,
         working: current.working,
         practice: current.practice,
@@ -138,6 +143,7 @@ export function TechView({ tech }: { tech: Tech }) {
         next.averageRepairOrder === current.averageRepairOrder &&
         next.hoursPerRepairOrder === current.hoursPerRepairOrder &&
         next.recsPerVehicle === current.recsPerVehicle &&
+        next.totalRecommendations === current.totalRecommendations &&
         next.salesPerBilledHour === current.salesPerBilledHour &&
         next.billedHours === current.billedHours &&
         next.cars === current.cars;
