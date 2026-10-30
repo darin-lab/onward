@@ -45,25 +45,19 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
   return asSnapshot(parsed);
 });
 
+function sealed(week: WeekLog) {
+  return Boolean(week.submitted && week.darinReady && week.arunReady);
+}
+
 function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
-  if (saved.reviewStage === "locked") {
-    if (incoming.grossProfit != null && saved.grossProfit == null) {
-      return { ...saved, grossProfit: incoming.grossProfit };
-    }
-    return saved;
-  }
-  if (incoming.reviewStage === "locked") return { ...saved, ...incoming, reviewStage: "locked" as const };
-  const worked = (week: WeekLog) =>
-    week.billedHours != null ||
-    week.totalRecommendations != null ||
-    week.serviceHours != null ||
-    week.hoursPerRepairOrder != null ||
-    week.grossProfit != null ||
-    Boolean(week.working) ||
-    Boolean(week.practice);
-  if (worked(saved) && !worked(incoming)) return saved;
+  if (sealed(saved) && !sealed(incoming)) return saved;
   const next: WeekLog = { ...saved, ...incoming };
-  if (saved.reviewStage === "manager" && next.reviewStage !== "locked") next.reviewStage = "manager";
+  if (sealed(incoming)) {
+    next.submitted = true;
+    next.darinReady = true;
+    next.arunReady = true;
+    next.reviewStage = "locked";
+  }
   const numbers = [
     "hours",
     "billedHours",
@@ -89,9 +83,13 @@ function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
   if ((!incoming.boomerangs || incoming.boomerangs.length === 0) && saved.boomerangs?.length) {
     next.boomerangs = saved.boomerangs;
   }
-  if (saved.submitted) next.submitted = true;
-  if (saved.darinReady) next.darinReady = true;
-  if (saved.arunReady) next.arunReady = true;
+  if (saved.scores || incoming.scores) next.scores = { ...saved.scores, ...incoming.scores };
+  if (sealed(saved)) {
+    next.submitted = true;
+    next.darinReady = true;
+    next.arunReady = true;
+    next.reviewStage = "locked";
+  }
   return next;
 }
 
@@ -162,5 +160,5 @@ export const saveBoard = createServerFn({ method: "POST" })
        on conflict (id) do update set data = excluded.data, updated_at = now()`,
       ["main", JSON.stringify(data)],
     );
-    return { ok: true as const };
+    return { ok: true as const, weeks: data.weeks };
   });

@@ -5,7 +5,7 @@ import { HabitChart, HoursChart } from "@/components/board/charts";
 import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
-import { flushSharedBoard } from "@/lib/board/shared";
+import { flushSharedBoard, weekWasStored } from "@/lib/board/shared";
 import { mailManagerReview } from "@/lib/board/mail-manager.functions";
 import { pullShopRange, type ShopPull } from "@/lib/board/dashboard.functions";
 import {
@@ -1511,7 +1511,8 @@ function LeadWriter({
   const keep = async (next: WeekLog, leave: boolean) => {
     upsertWeek(next);
     const saved = await flushSharedBoard();
-    if (!saved) throw new Error("save failed");
+    const stored = saved && (await weekWasStored(next));
+    if (!stored) throw new Error("save failed");
     if (leave) onDone();
   };
 
