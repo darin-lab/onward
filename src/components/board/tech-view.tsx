@@ -88,6 +88,12 @@ function typedGrossProfit() {
   return Math.round(parsed * 100) / 100;
 }
 
+function typedNote(id: string) {
+  const el = document.getElementById(id);
+  if (!(el instanceof HTMLTextAreaElement)) return undefined;
+  return el.value;
+}
+
 function reviewFrozen(week: WeekLog) {
   return Boolean(week.submitted && week.darinReady && week.arunReady) || isWeekLocked(week.weekStart);
 }
@@ -275,11 +281,15 @@ export function TechView({ tech }: { tech: Tech }) {
           upcoming={upcoming}
           capture={(current) => {
             const signed = Boolean(current.submitted && current.darinReady && current.arunReady);
-            const base =
+            let next =
               signed || isWeekLocked(current.weekStart) ? current : applySheet(current, sheetRef.current);
             const typed = typedGrossProfit();
-            if (typed === undefined || signed) return base;
-            return { ...base, grossProfit: typed };
+            if (typed !== undefined && !signed) next = { ...next, grossProfit: typed };
+            const working = typedNote("working");
+            const practice = typedNote("practice");
+            if (working !== undefined) next = { ...next, working };
+            if (practice !== undefined) next = { ...next, practice };
+            return next;
           }}
           onStart={(weekStart) => {
             startWeek(tech.id, weekStart);
@@ -1499,9 +1509,9 @@ function LeadWriter({
     );
   };
   const keep = async (next: WeekLog, leave: boolean) => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     upsertWeek(next);
-    await flushSharedBoard();
+    const saved = await flushSharedBoard();
+    if (!saved) throw new Error("save failed");
     if (leave) onDone();
   };
 
@@ -1581,26 +1591,31 @@ function LeadWriter({
           <div className="grid grid-cols-2 gap-3">
             <Button
               disabled={sending}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 const latest = latestWeek();
                 if (!latest || sending) return;
                 setSending(true);
                 setNotice("");
-                void keep(latest, false).finally(() => {
-                  setSending(false);
-                  setNotice("Saved.");
-                });
+                void keep(latest, false)
+                  .then(() => setNotice("Saved."))
+                  .catch(() => setNotice("Not saved. Try again."))
+                  .finally(() => setSending(false));
               }}
             >
               Save
             </Button>
             <Button
               disabled={sending}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 const latest = latestWeek();
                 if (!latest || sending) return;
                 setSending(true);
-                void keep(latest, true);
+                void keep(latest, true).catch(() => {
+                  setSending(false);
+                  setNotice("Not saved. Try again.");
+                });
               }}
             >
               Save & exit
@@ -1730,51 +1745,54 @@ function ManagerSignOff({
       ) ?? week;
     return capture ? capture(current) : current;
   };
-  const settle = () =>
-    new Promise<void>((resolve) => {
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      setTimeout(resolve, 0);
-    });
   const save = (leave: boolean) => {
     if (sending) return;
     setSending(true);
-    void settle()
-      .then(() => onKeep(latest(), leave))
-      .finally(() => {
-        if (!leave) {
-          setSending(false);
-          setSavedNote("Saved.");
-        }
+    setSavedNote("");
+    void onKeep(latest(), leave)
+      .then(() => {
+        if (leave) return;
+        setSending(false);
+        setSavedNote("Saved.");
+      })
+      .catch(() => {
+        setSending(false);
+        setSavedNote("Not saved. Try again.");
       });
   };
   const approve = (who: "darin" | "arun") => {
     setAsking(null);
     setSending(true);
-    void settle()
-      .then(() => {
-        const current = latest();
-        return onKeep(
-          {
-            ...current,
-            darinReady: who === "darin" ? true : current.darinReady,
-            arunReady: who === "arun" ? true : current.arunReady,
-          },
-          false,
-        );
-      })
-      .finally(() => {
-        setSending(false);
-        setSavedNote("Saved.");
-      });
+    setSavedNote("");
+    const current = latest();
+    void onKeep(
+      {
+        ...current,
+        darinReady: who === "darin" ? true : current.darinReady,
+        arunReady: who === "arun" ? true : current.arunReady,
+      },
+      false,
+    )
+      .then(() => setSavedNote("Saved."))
+      .catch(() => setSavedNote("Not saved. Try again."))
+      .finally(() => setSending(false));
   };
   const both = Boolean(week.darinReady && week.arunReady);
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <Button disabled={sending} onClick={() => save(false)}>
+        <Button
+          disabled={sending}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => save(false)}
+        >
           Save
         </Button>
-        <Button disabled={sending} onClick={() => save(true)}>
+        <Button
+          disabled={sending}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => save(true)}
+        >
           Save & exit
         </Button>
         <ReadyMark
@@ -1796,13 +1814,20 @@ function ManagerSignOff({
         <button
           type="button"
           disabled={sending}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             if (sending) return;
             setSending(true);
-            void settle().then(() => {
-              const current = latest();
-              const saved = { ...current, darinReady: true, arunReady: true, submitted: true, reviewStage: "locked" as const };
-              return onKeep(saved, false).then(() => {
+            const current = latest();
+            const saved = {
+              ...current,
+              darinReady: true,
+              arunReady: true,
+              submitted: true,
+              reviewStage: "locked" as const,
+            };
+            void onKeep(saved, false)
+              .then(() => {
                 const shop = shops.find((item) => item.id === tech.shopId);
                 void mailManagerReview({
                   data: {
@@ -1811,20 +1836,23 @@ function ManagerSignOff({
                     managerEmail: tech.email ?? "",
                     shopName: shop?.name ?? tech.shopId,
                     weekLabel: weekRangeLabel(current.weekStart),
-                    rows: reviewRows(current),
+                    rows: reviewRows(saved),
                     notes: [
-                      { label: "What's already working", value: current.working ?? "" },
-                      { label: "What to practice next", value: current.practice ?? "" },
+                      { label: "What's already working", value: saved.working ?? "" },
+                      { label: "What to practice next", value: saved.practice ?? "" },
                     ],
                     habits: categories.map((category) => ({
                       name: category.name,
-                      word: levelWord(current.scores[category.id], "manager"),
+                      word: levelWord(saved.scores[category.id], "manager"),
                     })),
                   },
                 });
                 onDone();
+              })
+              .catch(() => {
+                setSending(false);
+                setSavedNote("Not saved. Try again.");
               });
-            });
           }}
           className="relative w-full overflow-hidden rounded-md bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-400 px-5 py-4 font-display text-lg font-semibold tracking-wide text-zinc-900 uppercase italic shadow-[0_0_28px_rgba(250,204,21,0.9)]"
         >

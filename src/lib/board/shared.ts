@@ -139,14 +139,16 @@ export async function flushSharedBoard() {
     clearTimeout(timer);
     timer = null;
   }
-  if (!ready) return;
+  if (!ready) return false;
   const next = snapshot();
   const encoded = JSON.stringify(next);
-  if (encoded === lastSaved) return;
+  if (encoded === lastSaved) return true;
   lastSaved = encoded;
   try {
     await saveBoard({ data: next });
+    return true;
   } catch {
     lastSaved = "";
+    return false;
   }
 }
