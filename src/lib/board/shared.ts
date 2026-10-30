@@ -1,4 +1,4 @@
-import { loadBoard, saveBoard, type BoardSnapshot } from "@/lib/board/board.functions";
+import { loadBoard, saveBoard, saveWeek, type BoardSnapshot } from "@/lib/board/board.functions";
 import type { WeekLog } from "@/lib/board/model";
 import { sampleReflections } from "@/components/board/phone-call";
 import { seedCategories, seedShops } from "@/lib/board/seed";
@@ -154,18 +154,13 @@ export async function flushSharedBoard() {
   }
 }
 
-export async function weekWasStored(week: WeekLog) {
-  const remote = await loadBoard();
-  const stored = remote?.weeks.find(
-    (item) => item.techId === week.techId && item.weekStart === week.weekStart,
-  );
-  if (!stored) return false;
-  if ((week.grossProfit ?? null) !== (stored.grossProfit ?? null)) return false;
-  if ((week.working ?? "") !== (stored.working ?? "")) return false;
-  if ((week.practice ?? "") !== (stored.practice ?? "")) return false;
-  const keys = new Set([...Object.keys(week.scores ?? {}), ...Object.keys(stored.scores ?? {})]);
-  for (const key of keys) {
-    if ((week.scores?.[key] ?? null) !== (stored.scores?.[key] ?? null)) return false;
-  }
-  return true;
+export async function storeWeek(week: WeekLog) {
+  const result = await saveWeek({ data: week });
+  const stored = result?.week;
+  if (!result?.ok || !stored) return null;
+  if ((week.grossProfit ?? null) !== (stored.grossProfit ?? null)) return null;
+  if ((week.working ?? "") !== (stored.working ?? "")) return null;
+  if ((week.practice ?? "") !== (stored.practice ?? "")) return null;
+  useBoard.getState().upsertWeek(stored);
+  return stored;
 }

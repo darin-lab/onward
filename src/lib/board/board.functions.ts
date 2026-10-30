@@ -32,7 +32,7 @@ function asSnapshot(input: unknown): BoardSnapshot {
   };
 }
 
-export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
+export const loadBoard = createServerFn({ method: "POST" }).handler(async () => {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<{ data: string }>(
@@ -51,6 +51,7 @@ function sealed(week: WeekLog) {
 
 function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
   if (sealed(saved) && !sealed(incoming)) return saved;
+  if ((saved.updatedAt ?? "") > (incoming.updatedAt ?? "")) return saved;
   const next: WeekLog = { ...saved, ...incoming };
   if (sealed(incoming)) {
     next.submitted = true;
@@ -161,4 +162,36 @@ export const saveBoard = createServerFn({ method: "POST" })
       ["main", JSON.stringify(data)],
     );
     return { ok: true as const, weeks: data.weeks };
+  });
+
+function asWeek(input: unknown): WeekLog {
+  if (!input || typeof input !== "object") throw new Error("Invalid week");
+  const week = input as Partial<WeekLog>;
+  if (typeof week.techId !== "string" || typeof week.weekStart !== "string") throw new Error("Invalid week");
+  return { ...(week as WeekLog), updatedAt: new Date().toISOString() };
+}
+
+export const saveWeek = createServerFn({ method: "POST" })
+  .validator((input: unknown) => asWeek(input))
+  .handler(async ({ data }) => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql.query<{ data: string }>(
+      "select data from board_state where id = $1",
+      ["main"],
+    );
+    const raw = rows[0]?.data;
+    if (!raw) throw new Error("Board is not ready");
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const saved = asSnapshot(parsed);
+    saved.weeks = mergeWeeks(saved.weeks, [data]);
+    await sql.query(
+      `insert into board_state (id, data, updated_at)
+       values ($1, $2, now())
+       on conflict (id) do update set data = excluded.data, updated_at = now()`,
+      ["main", JSON.stringify(saved)],
+    );
+    const week = saved.weeks.find((item) => item.techId === data.techId && item.weekStart === data.weekStart);
+    if (!week) throw new Error("Week was not stored");
+    return { ok: true as const, week };
   });

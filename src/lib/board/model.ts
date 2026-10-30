@@ -63,6 +63,7 @@ export type WeekLog = {
   reviewStage?: "draft" | "manager" | "locked";
   darinReady?: boolean;
   arunReady?: boolean;
+  updatedAt?: string;
 };
 
 export const DAY_FIELDS = [
