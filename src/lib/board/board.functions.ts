@@ -46,7 +46,12 @@ export const loadBoard = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 function mergeWeek(saved: WeekLog, incoming: WeekLog): WeekLog {
-  if (saved.reviewStage === "locked") return saved;
+  if (saved.reviewStage === "locked") {
+    if (incoming.grossProfit != null && saved.grossProfit == null) {
+      return { ...saved, grossProfit: incoming.grossProfit };
+    }
+    return saved;
+  }
   if (incoming.reviewStage === "locked") return { ...saved, ...incoming, reviewStage: "locked" as const };
   const worked = (week: WeekLog) =>
     week.billedHours != null ||

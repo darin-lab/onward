@@ -62,7 +62,30 @@ function applySheet(week: WeekLog, sheet: ShopPull["week"] | null) {
     salesPerBilledHour: keep(sheet.salesPerBilledHour, week.salesPerBilledHour),
     billedHours: keep(sheet.billedHours, week.billedHours),
     cars,
+    grossProfit: week.grossProfit,
   };
+}
+
+function storedWeek(week: WeekLog) {
+  return (
+    useBoard.getState().weeks.find(
+      (item) => item.techId === week.techId && item.weekStart === week.weekStart,
+    ) ?? week
+  );
+}
+
+function patchWeek(week: WeekLog, patch: Partial<WeekLog>) {
+  useBoard.getState().upsertWeek({ ...storedWeek(week), ...patch });
+}
+
+function typedGrossProfit() {
+  const input = document.getElementById("gross-profit");
+  if (!(input instanceof HTMLInputElement)) return undefined;
+  const raw = input.value.trim();
+  if (raw === "") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.round(parsed * 100) / 100;
 }
 
 function reviewFrozen(week: WeekLog) {
@@ -250,7 +273,14 @@ export function TechView({ tech }: { tech: Tech }) {
           tech={tech}
           week={active}
           upcoming={upcoming}
-          capture={(current) => (reviewFrozen(current) ? current : applySheet(current, sheetRef.current))}
+          capture={(current) => {
+            const signed = Boolean(current.submitted && current.darinReady && current.arunReady);
+            const base =
+              signed || isWeekLocked(current.weekStart) ? current : applySheet(current, sheetRef.current);
+            const typed = typedGrossProfit();
+            if (typed === undefined || signed) return base;
+            return { ...base, grossProfit: typed };
+          }}
           onStart={(weekStart) => {
             startWeek(tech.id, weekStart);
             setPicked(weekStart);
@@ -451,7 +481,6 @@ function ManagerWeek({
   writing: boolean;
   sheet: ShopPull["week"] | null;
 }) {
-  const upsertWeek = useBoard((state) => state.upsertWeek);
   const techs = useBoard((state) => state.techs);
   const weeks = useBoard((state) => state.weeks);
   const ranks = managerRanks(techs, weeks, week.weekStart, week.techId);
@@ -579,7 +608,7 @@ function ManagerWeek({
                 label=""
                 value={field.value}
                 max={field.max}
-                onCommit={(grossProfit) => upsertWeek({ ...week, grossProfit })}
+                onCommit={(grossProfit) => patchWeek(week, { grossProfit })}
               />
             ) : (
               <p
@@ -1078,7 +1107,6 @@ function TechNotes({ week, writing }: { week: WeekLog; writing: boolean }) {
 }
 
 function ManagerNotes({ week, writing }: { week: WeekLog; writing: boolean }) {
-  const upsertWeek = useBoard((state) => state.upsertWeek);
   if (!writing && !week.working && !week.practice) return null;
   return (
     <Card className="mt-6">
@@ -1091,7 +1119,7 @@ function ManagerNotes({ week, writing }: { week: WeekLog; writing: boolean }) {
             <textarea
               id="working"
               value={week.working}
-              onChange={(event) => upsertWeek({ ...week, working: event.target.value })}
+              onChange={(event) => patchWeek(week, { working: event.target.value })}
               className={cn(fieldClass, "mt-2 min-h-24 py-3")}
               placeholder="Name something real they can feel proud of."
             />
@@ -1109,7 +1137,7 @@ function ManagerNotes({ week, writing }: { week: WeekLog; writing: boolean }) {
             <textarea
               id="practice"
               value={week.practice}
-              onChange={(event) => upsertWeek({ ...week, practice: event.target.value })}
+              onChange={(event) => patchWeek(week, { practice: event.target.value })}
               className={cn(fieldClass, "mt-2 min-h-28 py-3")}
               placeholder="One specific, kind next step."
             />
@@ -1182,8 +1210,8 @@ function HabitMarks({ week, kind }: { week: WeekLog; kind: Tech["kind"] }) {
                       aria-label={level.word}
                       onClick={() =>
                         upsertWeek({
-                          ...week,
-                          scores: { ...week.scores, [category.id]: level.score },
+                          ...storedWeek(week),
+                          scores: { ...storedWeek(week).scores, [category.id]: level.score },
                         })
                       }
                       className={cn(
