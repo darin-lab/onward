@@ -78,14 +78,19 @@ function patchWeek(week: WeekLog, patch: Partial<WeekLog>) {
   useBoard.getState().upsertWeek({ ...storedWeek(week), ...patch });
 }
 
+function parseMoney(raw: string) {
+  const cleaned = raw.trim().replace(/\$/g, "").replace(/,/g, "");
+  if (cleaned === "") return null;
+  if (!/^\d+(\.\d+)?$/.test(cleaned)) return undefined;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.round(parsed * 100) / 100;
+}
+
 function typedGrossProfit() {
   const input = document.getElementById("gross-profit");
   if (!(input instanceof HTMLInputElement)) return undefined;
-  const raw = input.value.trim();
-  if (raw === "") return null;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return undefined;
-  return Math.round(parsed * 100) / 100;
+  return parseMoney(input.value);
 }
 
 function typedNote(id: string) {
@@ -586,7 +591,7 @@ function ManagerWeek({
       id: "gross-profit",
       label: "Gross profit",
       value: week.grossProfit,
-      max: 100000,
+      max: 1000000,
       rank: ranks.grossProfit,
       text: week.grossProfit == null ? "—" : formatMoney(week.grossProfit),
       edit: true,
@@ -1456,25 +1461,23 @@ function DecimalField({
         onChange={(event) => {
           const nextText = event.target.value;
           setText(nextText);
-          if (nextText.trim() === "") {
-            onCommit(null);
-            return;
-          }
-          const parsed = Number(nextText);
-          if (Number.isNaN(parsed)) return;
-          onCommit(Math.min(max, Math.max(0, Math.round(parsed * 100) / 100)));
+          const parsed = parseMoney(nextText);
+          if (parsed === undefined) return;
+          onCommit(parsed == null ? null : Math.min(max, Math.max(0, parsed)));
         }}
         onBlur={() => {
           focused.current = false;
-          if (text.trim() === "") {
-            onCommit(null);
-            return;
-          }
-          if (Number.isNaN(Number(text))) {
+          const parsed = parseMoney(text);
+          if (parsed === undefined) {
             setText(value == null ? "" : formatHours(value));
             return;
           }
-          const next = Math.min(max, Math.max(0, Math.round(Number(text) * 100) / 100));
+          if (parsed == null) {
+            onCommit(null);
+            setText("");
+            return;
+          }
+          const next = Math.min(max, Math.max(0, parsed));
           onCommit(next);
           setText(formatHours(next));
         }}
