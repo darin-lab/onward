@@ -58,10 +58,7 @@ function applySheet(week: WeekLog, sheet: ShopPull["week"] | null) {
     averageRepairOrder: keep(sheet.averageRepairOrder, week.averageRepairOrder),
     hoursPerRepairOrder: keep(sheet.hoursPerRepairOrder, week.hoursPerRepairOrder),
     recsPerVehicle,
-    totalRecommendations:
-      recsPerVehicle != null && cars != null
-        ? Math.round(recsPerVehicle * cars * 100) / 100
-        : week.totalRecommendations,
+    totalRecommendations: null,
     salesPerBilledHour: keep(sheet.salesPerBilledHour, week.salesPerBilledHour),
     billedHours: keep(sheet.billedHours, week.billedHours),
     cars,
@@ -478,7 +475,6 @@ function ManagerWeek({
     goal?: string;
     met?: (n: number) => boolean;
     edit?: boolean;
-    total?: boolean;
   }[] = [
     {
       id: "total-sales",
@@ -529,7 +525,6 @@ function ManagerWeek({
       text: shown.recsPerVehicle == null ? "—" : formatMoney(shown.recsPerVehicle),
       goal: "Goal $2,800",
       met: (n) => n >= 2800,
-      total: true,
     },
     {
       id: "sales-per-hour",
@@ -594,12 +589,6 @@ function ManagerWeek({
                 {field.text}
               </p>
             )}
-            {field.total ? (
-              <p className="mt-1 text-sm tabular-nums text-muted">
-                Total recommendations{" "}
-                {shown.totalRecommendations == null ? "—" : formatMoney(shown.totalRecommendations)}
-              </p>
-            ) : null}
             <RankLine rank={field.rank} total={ranks.total} />
           </li>
         ))}
