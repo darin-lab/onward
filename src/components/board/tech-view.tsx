@@ -744,7 +744,7 @@ function WeekWork({
               billedHours,
               ...techFigures({
                 billedHours,
-                billedPerRo: week.hoursPerRepairOrder,
+                cars: week.cars,
                 totalRecommendations: week.totalRecommendations ?? null,
                 serviceHours: week.serviceHours ?? null,
               }),
@@ -786,7 +786,7 @@ function WeekWork({
                   hoursPerRepairOrder: billedPerRo,
                   ...techFigures({
                     billedHours: week.billedHours,
-                    billedPerRo,
+                    cars: week.cars,
                     totalRecommendations: week.totalRecommendations ?? null,
                     serviceHours: week.serviceHours ?? null,
                   }),
@@ -814,7 +814,7 @@ function WeekWork({
                   serviceHours,
                   ...techFigures({
                     billedHours: week.billedHours,
-                    billedPerRo: week.hoursPerRepairOrder,
+                    cars: week.cars,
                     totalRecommendations: week.totalRecommendations ?? null,
                     serviceHours,
                   }),
@@ -842,7 +842,7 @@ function WeekWork({
                   totalRecommendations,
                   ...techFigures({
                     billedHours: week.billedHours,
-                    billedPerRo: week.hoursPerRepairOrder,
+                    cars: week.cars,
                     totalRecommendations,
                     serviceHours: week.serviceHours ?? null,
                   }),
@@ -860,12 +860,36 @@ function WeekWork({
             <p className="text-sm text-muted">Cars</p>
             <p className="text-xs text-muted">Goal 14</p>
           </div>
-          <p
-            className="mt-1 font-display text-3xl font-semibold tabular-nums"
-            style={{ color: goalColor(week.cars == null ? null : Math.round(week.cars), (n) => n >= 14) }}
-          >
-            {week.cars == null ? "—" : formatHours(Math.round(week.cars))}
-          </p>
+          {editNumbers ? (
+            <DecimalField
+              key={`${week.weekStart}-cars`}
+              id="cars"
+              label=""
+              value={week.cars == null ? null : Math.round(week.cars)}
+              max={80}
+              onCommit={(cars) => {
+                const next = cars == null ? null : Math.round(cars);
+                upsertWeek({
+                  ...week,
+                  cars: next,
+                  ...techFigures({
+                    billedHours: week.billedHours,
+                    cars: next,
+                    totalRecommendations: week.totalRecommendations ?? null,
+                    serviceHours: week.serviceHours ?? null,
+                  }),
+                });
+              }}
+              met={(n) => n >= 14}
+            />
+          ) : (
+            <p
+              className="mt-1 font-display text-3xl font-semibold tabular-nums"
+              style={{ color: goalColor(week.cars == null ? null : Math.round(week.cars), (n) => n >= 14) }}
+            >
+              {week.cars == null ? "—" : formatHours(Math.round(week.cars))}
+            </p>
+          )}
           <RankLine rank={ranks?.cars} total={ranks?.total} />
           {detail ? (
             <MissNote
@@ -1403,21 +1427,16 @@ function recsFromTotal(total: number | null, cars: number | null) {
 
 function techFigures(input: {
   billedHours: number | null;
-  billedPerRo: number | null;
+  cars: number | null;
   totalRecommendations: number | null;
   serviceHours: number | null;
 }) {
-  const cars =
-    input.billedHours != null && input.billedPerRo != null && input.billedPerRo > 0
-      ? Math.round(input.billedHours / input.billedPerRo)
-      : null;
   const efficiency =
     input.billedHours != null && input.serviceHours != null && input.serviceHours > 0
       ? Math.round((input.billedHours / input.serviceHours) * 1000) / 10
       : null;
-  const recsPerVehicle = recsFromTotal(input.totalRecommendations, cars);
+  const recsPerVehicle = recsFromTotal(input.totalRecommendations, input.cars);
   return {
-    ...(cars != null ? { cars } : {}),
     ...(recsPerVehicle != null ? { recsPerVehicle } : {}),
     ...(efficiency != null ? { efficiency } : {}),
   };
