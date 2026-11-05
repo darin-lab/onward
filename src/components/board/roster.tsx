@@ -202,7 +202,7 @@ export function Roster() {
 
 const LIGHT_COLOR = { red: "#e10600", green: "#3DDC84", off: "#3a3a3a" } as const;
 const LIGHT_WORD = {
-  manager: { red: "Manager review waiting to be opened", green: "Manager opened their review", off: "No manager review submitted" },
+  manager: { red: "Manager hasn't read their review yet", green: "Manager read their review", off: "No manager review submitted" },
   tech: { red: "Tech reviews waiting on the manager", green: "Tech reviews finished", off: "No tech reviews submitted" },
 } as const;
 

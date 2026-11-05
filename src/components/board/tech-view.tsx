@@ -149,24 +149,15 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!have.has(last)) startWeek(tech.id, last);
     setPicked((current) => current ?? last);
   }, [boardReady, canLog, tech.id, tech.kind, viewer, startWeek]);
-  // The manager opening their own submitted review turns Darin's light green.
-  const sealedUnseen = Boolean(
+  // The manager's own submitted review waits for "I've read my review".
+  const needsAck = Boolean(
     active &&
       tech.kind === "manager" &&
       viewer === tech.id &&
       active.submitted &&
       active.darinReady &&
-      active.arunReady &&
-      !active.managerSeenAt,
+      active.arunReady,
   );
-  useEffect(() => {
-    if (!sealedUnseen || !active) return;
-    void markReviewSeen({ data: { weekStart: active.weekStart } })
-      .then((result) => {
-        if (result.ok && result.week) useBoard.getState().upsertWeek(result.week);
-      })
-      .catch(() => undefined);
-  }, [sealedUnseen, active?.weekStart]);
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -280,6 +271,7 @@ export function TechView({ tech }: { tech: Tech }) {
             )}
             <ManagerNotes week={active} writing={writing} />
             {writing ? null : <ManagerArcs list={list} week={active} />}
+            {needsAck && !writing ? <ReadReview week={active} /> : null}
           </>
         )
       ) : null}
@@ -2037,4 +2029,68 @@ function managerGaps(week: WeekLog) {
     if (!item.ro.trim() || !item.note.trim()) gaps.push("each boomerang");
   }
   return gaps;
+}
+
+/**
+ * Bottom of a manager's submitted review. The button unlocks once they have
+ * scrolled to the end, like a disclaimer. Pressing it records the read, which
+ * turns the Mgr light green for Darin and Arun.
+ */
+function ReadReview({ week }: { week: WeekLog }) {
+  const end = useRef<HTMLDivElement | null>(null);
+  const [reached, setReached] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  useEffect(() => {
+    if (week.managerSeenAt || reached) return;
+    const node = end.current;
+    if (!node) return;
+    const watcher = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setReached(true);
+    });
+    watcher.observe(node);
+    return () => watcher.disconnect();
+  }, [week.managerSeenAt, reached]);
+
+  if (week.managerSeenAt) {
+    const when = new Date(week.managerSeenAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return (
+      <p className="mt-8 flex items-center justify-center gap-2 text-sm text-muted">
+        <ThumbsUp className="size-4 text-emerald-400" />
+        You read this review on {when}.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-8 border-t border-line pt-6 text-center">
+      <p className="text-sm text-muted">
+        {reached ? "That's the whole review." : "Scroll to the bottom of your review to unlock this."}
+      </p>
+      <button
+        type="button"
+        disabled={!reached || saving}
+        onClick={() => {
+          setSaving(true);
+          setProblem("");
+          void markReviewSeen({ data: { weekStart: week.weekStart } })
+            .then((result) => {
+              if (!result.ok || !result.week) throw new Error("not saved");
+              useBoard.getState().upsertWeek(result.week);
+            })
+            .catch(() => setProblem("That didn't save. Try again."))
+            .finally(() => setSaving(false));
+        }}
+        className={cn(
+          "mt-3 w-full rounded-md px-5 py-4 font-display text-lg font-semibold tracking-wide uppercase italic transition-colors",
+          reached ? "bg-honey text-honey-fg" : "cursor-not-allowed bg-raised text-muted shadow-border",
+        )}
+      >
+        I've read my review
+      </button>
+      {problem ? <p className="mt-2 text-sm text-honey">{problem}</p> : null}
+      <div ref={end} className="h-px" aria-hidden="true" />
+    </div>
+  );
 }

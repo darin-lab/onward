@@ -79,7 +79,7 @@ export const loadBoard = createServerFn({ method: "POST" }).handler(async () => 
 });
 
 /**
- * A manager opened their own submitted weekly review. Records the first time
+ * A manager pressed "I've read my review" on their submitted review. Records the first time
  * only; this is what turns Darin's "Mgr" light green.
  */
 export const markReviewSeen = createServerFn({ method: "POST" })
