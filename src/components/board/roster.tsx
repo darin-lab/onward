@@ -122,7 +122,7 @@ export function Roster() {
               <div className="relative flex h-full flex-col rounded-2xl bg-surface p-4 shadow-border">
                 {tech.kind === "manager" && viewer === tech.id && unreadReview(weeks, tech.id) ? (
                   <span className="tag-flash pointer-events-none absolute -top-2.5 right-3 z-10 rounded-full px-2.5 py-0.5 font-display text-[11px] tracking-wide uppercase italic">
-                    New review
+                    New check-in
                   </span>
                 ) : null}
                 <Link
@@ -208,8 +208,8 @@ export function Roster() {
 
 const LIGHT_COLOR = { red: "#e10600", green: "#3DDC84", off: "#3a3a3a" } as const;
 const LIGHT_WORD = {
-  manager: { red: "Manager hasn't read their review yet", green: "Manager read their review", off: "No manager review submitted" },
-  tech: { red: "Tech reviews waiting on the manager", green: "Tech reviews finished", off: "No tech reviews submitted" },
+  manager: { red: "Manager hasn't read their check-in yet", green: "Manager read their check-in", off: "No manager check-in submitted" },
+  tech: { red: "Tech check-ins waiting on the manager", green: "Tech check-ins finished", off: "No tech check-ins submitted" },
 } as const;
 
 /** Only shown to Darin and Arun: where each shop stands on its reviews. */

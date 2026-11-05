@@ -223,7 +223,7 @@ export function TechView({ tech }: { tech: Tech }) {
           className="mt-3 ml-0 block text-left sm:ml-4 sm:inline-block sm:align-bottom"
         >
           <span className="ready-flash block font-display text-lg font-semibold tracking-wide uppercase italic">
-            Review is ready!
+            Check-In is ready!
           </span>
           <span className="block text-xs text-muted">Read it below and scroll to the bottom.</span>
         </button>
@@ -249,8 +249,8 @@ export function TechView({ tech }: { tech: Tech }) {
           onNext={openLater}
         />
       ) : null}
-      {finished ? <p className="mt-2 text-center text-sm text-muted">This review is finished.</p> : null}
-      {locked ? <p className="mt-2 text-center text-sm text-muted">This review is finished.</p> : null}
+      {finished ? <p className="mt-2 text-center text-sm text-muted">This check-in is finished.</p> : null}
+      {locked ? <p className="mt-2 text-center text-sm text-muted">This check-in is finished.</p> : null}
 
       {tech.kind === "technician" && active ? (
         <WeekWork
@@ -352,7 +352,7 @@ export function TechView({ tech }: { tech: Tech }) {
             setReviewing(true);
           }}
         >
-          Review
+          Check-In
         </Button>
       ) : null}
     </div>
@@ -420,8 +420,8 @@ function PrivateReview({ tech }: { tech: Tech }) {
   return (
     <p className="mt-6 text-muted">
       {tech.kind === "technician"
-        ? "This review is only for this technician. Sign in with your PIN."
-        : `This weekly review is only for ${tech.name} and the owner.`}
+        ? "This check-in is only for this technician. Sign in with your PIN."
+        : `This weekly check-in is only for ${tech.name} and the owner.`}
     </p>
   );
 }
@@ -634,7 +634,7 @@ function ManagerWeek({
   return (
     <Card className="mt-6">
       <p className="mb-4 text-sm text-muted">
-        {sheet ? "From the dashboard for this week." : week.snapshotAt ? "Saved with this review." : "From the dashboard for this week."}
+        {sheet ? "From the dashboard for this week." : week.snapshotAt ? "Saved with this check-in." : "From the dashboard for this week."}
       </p>
       {sales ? (
         <div>
@@ -1941,14 +1941,14 @@ function ManagerSignOff({
           Submit
         </button>
       ) : (
-        <p className="text-sm text-muted">Both names turn green before submit. Turning one green saves the review.</p>
+        <p className="text-sm text-muted">Both names turn green before submit. Turning one green saves the check-in.</p>
       )}
       {savedNote ? <p className="text-sm text-muted">{savedNote}</p> : null}
       {asking ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-sm rounded-md bg-surface px-6 py-6 text-center shadow-border">
             <p className="font-display text-2xl tracking-wide text-ink uppercase italic">
-              is this review as complete as it can be?
+              is this check-in as complete as it can be?
             </p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
@@ -2079,7 +2079,7 @@ function ReadReview({ week }: { week: WeekLog }) {
     return (
       <p className="mt-8 flex items-center justify-center gap-2 text-sm text-muted">
         <ThumbsUp className="size-4 text-emerald-400" />
-        You read this review on {when}.
+        You read this check-in on {when}.
       </p>
     );
   }
@@ -2087,7 +2087,7 @@ function ReadReview({ week }: { week: WeekLog }) {
   return (
     <div className="mt-8 border-t border-line pt-6 text-center">
       <p className="text-sm text-muted">
-        {reached ? "That's the whole review." : "Scroll to the bottom of your review to unlock this."}
+        {reached ? "That's the whole check-in." : "Scroll to the bottom of your check-in to unlock this."}
       </p>
       <button
         type="button"
@@ -2108,7 +2108,7 @@ function ReadReview({ week }: { week: WeekLog }) {
           reached ? "bg-honey text-honey-fg" : "cursor-not-allowed bg-raised text-muted shadow-border",
         )}
       >
-        I've read my review
+        I've read my check-in
       </button>
       {problem ? <p className="mt-2 text-sm text-honey">{problem}</p> : null}
       <div ref={end} className="h-px" aria-hidden="true" />

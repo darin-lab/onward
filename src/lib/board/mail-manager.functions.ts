@@ -53,7 +53,7 @@ export const mailManagerReview = createServerFn({ method: "POST" })
       auth: { user, pass },
     });
     const text = [
-      "Manager review",
+      "Manager Check-In",
       data.shopName,
       data.managerName,
       data.weekLabel,
@@ -65,7 +65,7 @@ export const mailManagerReview = createServerFn({ method: "POST" })
     await transport.sendMail({
       from: user,
       to: to.join(", "),
-      subject: `Manager Review — ${data.managerName} — ${data.weekLabel}`,
+      subject: `Manager Check-In — ${data.managerName} — ${data.weekLabel}`,
       text,
       html: reviewHtml(data),
     });
@@ -110,7 +110,7 @@ function reviewHtml(data: ReviewMail) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fffdf8;border:1px solid #e6e0d6;border-radius:12px;">
           <tr><td style="background:#c42230;height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>
           <tr><td style="padding:22px;">
-            <p style="margin:0;font-family:Arial, Helvetica, sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#c42230;">Manager review</p>
+            <p style="margin:0;font-family:Arial, Helvetica, sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#c42230;">Manager Check-In</p>
             <h1 style="margin:6px 0 0;font-size:28px;line-height:1.1;">${escapeHtml(data.shopName)}</h1>
             <p style="margin:6px 0 0;font-size:16px;">${escapeHtml(data.managerName)}</p>
             <p style="margin:4px 0 16px;font-size:14px;color:#5c564e;">${escapeHtml(data.weekLabel)}</p>

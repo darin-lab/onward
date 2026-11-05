@@ -150,7 +150,7 @@ function ReviewAlert() {
         onClick={() => setOpen((current) => !current)}
         className="relative inline-flex min-h-12 items-center rounded-md bg-honey px-3 font-display text-sm tracking-wide text-honey-fg uppercase italic"
       >
-        Tech reviews
+        Tech check-ins
         <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold text-honey">
           {waiting.length}
         </span>

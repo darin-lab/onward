@@ -279,7 +279,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         <Card className="mt-6">
           <p className="font-display text-2xl text-ink">Let's take care of these first.</p>
           <p className="mt-2 text-sm text-muted">
-            Finish and send {owed.length === 1 ? "this tech review" : "these tech reviews"}, then the
+            Finish and send {owed.length === 1 ? "this tech check-in" : "these tech check-ins"}, then the
             report opens.
           </p>
           <ul className="mt-5 space-y-3">
@@ -431,8 +431,8 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                 setProblem("View only. Nothing was sent.");
                 return;
               }
-              if (reason.includes("tech review")) {
-                setProblem("Finish your tech reviews first.");
+              if (reason.includes("tech check-in")) {
+                setProblem("Finish your tech check-ins first.");
                 void refreshWeeks().catch(() => undefined);
                 return;
               }
