@@ -37,6 +37,9 @@ export const mailManagerReview = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }) => {
+    const { requireViewer } = await import("@/lib/board/darin.server");
+    const viewer = await requireViewer();
+    if (viewer.role !== "owner") throw new Error("Not allowed");
     const user = process.env.GMAIL_USER?.trim();
     const pass = process.env.GMAIL_APP_PASSWORD?.trim();
     const manager = data.managerEmail || SHOP_EMAILS[data.shopId] || "";

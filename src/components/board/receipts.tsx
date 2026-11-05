@@ -25,7 +25,7 @@ export function ReceiptDesk() {
     refresh();
   }, []);
 
-  const amount = Number(total);
+  const amount = Number(total.replace(/[$,\s]/g, ""));
   const ready = Number.isFinite(amount) && amount > 0 && note.trim().length > 0 && file != null && !busy;
 
   return (

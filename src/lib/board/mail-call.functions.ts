@@ -1,4 +1,3 @@
-import { createServerFn } from "@tanstack/react-start";
 import { owners } from "@/lib/board/owners";
 
 const managers: Record<string, string> = {
@@ -9,7 +8,7 @@ const managers: Record<string, string> = {
   "san-jose": "sanjose@drivenautocare.com",
 };
 
-type MailInput = {
+export type CallMail = {
   shopId: string;
   shopName: string;
   managerName: string;
@@ -19,46 +18,37 @@ type MailInput = {
   audioName?: string;
 };
 
-export const mailPhoneReply = createServerFn({ method: "POST" })
-  .validator((input: unknown): MailInput => {
-    const data = input as Partial<MailInput>;
-    if (!data || typeof data.shopId !== "string" || typeof data.question !== "string") {
-      throw new Error("Invalid call");
-    }
-    return {
-      shopId: data.shopId,
-      shopName: typeof data.shopName === "string" ? data.shopName : data.shopId,
-      managerName: typeof data.managerName === "string" ? data.managerName : "Manager",
-      question: data.question,
-      answer: typeof data.answer === "string" ? data.answer : "",
-      audio: typeof data.audio === "string" ? data.audio : "",
-      audioName: typeof data.audioName === "string" ? data.audioName : "",
-    };
-  })
-  .handler(async ({ data }) => {
-    const user = process.env.GMAIL_USER?.trim();
-    const pass = process.env.GMAIL_APP_PASSWORD?.trim();
-    const manager = managers[data.shopId];
-    const to = [...new Set([...owners.map((owner) => owner.email), ...(manager ? [manager] : [])])];
-    if (!user || !pass) return { ok: false as const, reason: "not-configured" as const };
-    const nodemailer = await import("nodemailer");
-    const transport = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user, pass },
-    });
-    const attachment = audioFile(data.audio ?? "", data.audioName ?? "");
-    await transport.sendMail({
-      from: user,
-      to: to.join(", "),
-      subject: `Call reflection — ${data.managerName} — ${data.shopName}`,
-      text: ["Call reflection", data.shopName, data.managerName, "", "What would you like to ask?", data.question, "", "Reply", data.answer].join("\n"),
-      html: callHtml(data),
-      attachments: attachment ? [attachment] : [],
-    });
-    return { ok: true as const };
+type MailInput = CallMail;
+
+/**
+ * Server-only. Sends the answered call reflection, with its clip, to Darin,
+ * Arun and that shop's manager. Called from answerCall after the answer is
+ * stored, so the audio never has to travel from the browser again.
+ */
+export async function sendCallMail(data: CallMail) {
+  const user = process.env.GMAIL_USER?.trim();
+  const pass = process.env.GMAIL_APP_PASSWORD?.trim();
+  const manager = managers[data.shopId];
+  const to = [...new Set([...owners.map((owner) => owner.email), ...(manager ? [manager] : [])])];
+  if (!user || !pass) return { ok: false as const, reason: "not-configured" as const };
+  const nodemailer = await import("nodemailer");
+  const transport = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user, pass },
   });
+  const attachment = audioFile(data.audio ?? "", data.audioName ?? "");
+  await transport.sendMail({
+    from: user,
+    to: to.join(", "),
+    subject: `Call reflection — ${data.managerName} — ${data.shopName}`,
+    text: ["Call reflection", data.shopName, data.managerName, "", "What would you like to ask?", data.question, "", "Reply", data.answer].join("\n"),
+    html: callHtml(data),
+    attachments: attachment ? [attachment] : [],
+  });
+  return { ok: true as const };
+}
 
 function callHtml(data: MailInput) {
   const row = (label: string, value: string) =>
@@ -80,7 +70,7 @@ function callHtml(data: MailInput) {
 
 function audioFile(dataUrl: string, name: string) {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match || match[2].length > 6_000_000) return undefined;
+  if (!match || !match[2] || match[2].length > 6_000_000) return undefined;
   return {
     filename: name || "call.mp3",
     content: Buffer.from(match[2], "base64"),

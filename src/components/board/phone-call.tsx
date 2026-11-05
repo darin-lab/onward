@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, fieldClass } from "@/components/board/ui";
-import { mailPhoneReply } from "@/lib/board/mail-call.functions";
+import { answerCall, createCall, getCallAudio } from "@/lib/board/records.functions";
+import { refreshCalls } from "@/lib/board/shared";
 import type { PhoneCall, Tech } from "@/lib/board/model";
 import { isOwnerViewer } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { cn } from "@/lib/cn";
 
-const MAX_AUDIO = 4 * 1024 * 1024;
+const KEEP_SECONDS = 240;
 
 export function pendingCalls(calls: PhoneCall[], personId: string) {
   const actor = personId === "owner" ? "darin" : personId;
@@ -68,11 +69,28 @@ export function CallReview({
   lead?: string;
   onDone?: () => void;
 }) {
-  const answerCall = useBoard((state) => state.answerCall);
+  const [audio, setAudio] = useState(call.audio);
+  const clip = call.hasAudio || Boolean(call.audio);
   const [text, setText] = useState("");
-  const [played, setPlayed] = useState(!call.audio);
+  const [played, setPlayed] = useState(!clip);
   const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState("");
   const ready = text.trim().length > 0 && played && !sending;
+
+  useEffect(() => {
+    if (audio || !call.hasAudio) return;
+    let cancel = false;
+    void getCallAudio({ data: { id: call.id } })
+      .then((result) => {
+        if (!cancel) setAudio(result.audio);
+      })
+      .catch(() => {
+        if (!cancel) setProblem("The clip did not load. Close and open this again.");
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [audio, call.hasAudio, call.id]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-4 text-left sm:items-center">
@@ -108,10 +126,12 @@ export function CallReview({
                 }}
               />
               <div className="relative">
-                {call.audio ? (
+                {clip && !audio ? (
+                  <p className="text-sm">Loading the clip…</p>
+                ) : audio ? (
                   <audio
                     controls
-                    src={call.audio}
+                    src={audio}
                     className="w-full"
                     onPlay={() => setPlayed(true)}
                   />
@@ -137,25 +157,14 @@ export function CallReview({
               onClick={() => {
                 if (person.id !== call.managerId || !ready) return;
                 setSending(true);
-                const answer = text.trim();
-                answerCall(call.id, {
-                  personId: person.id,
-                  name: person.name,
-                  shopName,
-                  text: answer,
-                  at: new Date().toISOString(),
-                });
-                void mailPhoneReply({
-                  data: {
-                    shopId: person.shopId,
-                    shopName,
-                    managerName: person.name,
-                    question: call.question,
-                    answer,
-                    audio: call.audio,
-                    audioName: call.audioName,
-                  },
-                }).finally(() => onDone?.());
+                setProblem("");
+                void answerCall({ data: { id: call.id, text: text.trim() } })
+                  .then(() => refreshCalls().catch(() => undefined))
+                  .then(() => onDone?.())
+                  .catch(() => {
+                    setSending(false);
+                    setProblem("Your reply did not send. Try again.");
+                  });
               }}
             >
               Send
@@ -163,6 +172,7 @@ export function CallReview({
             {!played ? (
               <p className="mt-2 text-center text-xs text-zinc-500">Play the clip, then send your reply.</p>
             ) : null}
+            {problem ? <p className="mt-2 text-center text-xs text-red-400">{problem}</p> : null}
           </div>
         </div>
       </div>
@@ -235,8 +245,8 @@ export function BrickPhone() {
 }
 
 export function CallComposer() {
-  const addCall = useBoard((state) => state.addCall);
   const calls = useBoard((state) => state.calls ?? []);
+  const [sending, setSending] = useState(false);
   const techs = useBoard((state) => state.techs);
   const shops = useBoard((state) => state.shops);
   const [question, setQuestion] = useState("");
@@ -294,26 +304,17 @@ export function CallComposer() {
             if (!file) return;
             setAudio("");
             setAudioName("");
-            if (file.size <= MAX_AUDIO) {
-              const reader = new FileReader();
-              reader.onload = () => {
-                setAudio(String(reader.result ?? ""));
-                setAudioName(file.name);
-                setNote("");
-              };
-              reader.readAsDataURL(file);
-              return;
-            }
             setTrimming(true);
-            setNote("That clip is long. Keeping the last 4 minutes.");
+            setNote("Getting the clip ready…");
+            // Always keep only the last 4 minutes, however small the file is.
             void lastStretch(file)
               .then((clip) => {
                 setAudio(clip.dataUrl);
                 setAudioName(clip.name);
-                setNote("Only the last 4 minutes were kept.");
+                setNote(clip.trimmed ? "Only the last 4 minutes were kept." : "");
               })
               .catch(() => {
-                setNote("That clip could not be shortened. Try a shorter file.");
+                setNote("That clip could not be read. Try a different file.");
               })
               .finally(() => setTrimming(false));
           }}
@@ -321,22 +322,20 @@ export function CallComposer() {
       </label>
       <Button
         className="mt-4"
-        disabled={!question.trim() || !audio || !managerId || trimming}
+        disabled={!question.trim() || !audio || !managerId || trimming || sending}
         onClick={() => {
           const manager = managers.find((person) => person.id === managerId);
-          addCall({
-            id: `call-${Date.now()}`,
-            managerId,
-            question: question.trim(),
-            audio,
-            audioName,
-            createdAt: new Date().toISOString(),
-            answers: [],
-          });
-          setQuestion("");
-          setAudio("");
-          setAudioName("");
-          setNote(`Waiting on ${manager?.name ?? "that manager"}.`);
+          setSending(true);
+          void createCall({ data: { managerId, question: question.trim(), audio, audioName } })
+            .then(() => {
+              setQuestion("");
+              setAudio("");
+              setAudioName("");
+              setNote(`Waiting on ${manager?.name ?? "that manager"}.`);
+              return refreshCalls().catch(() => undefined);
+            })
+            .catch(() => setNote("That call reflection did not save. Try again."))
+            .finally(() => setSending(false));
         }}
       >
         Send call reflection
@@ -375,8 +374,7 @@ async function lastStretch(file: File) {
   try {
     const decoded = await ctx.decodeAudioData((await file.arrayBuffer()).slice(0));
     const rate = 8000;
-    const seconds = 240;
-    const start = Math.max(0, decoded.duration - seconds);
+    const start = Math.max(0, decoded.duration - KEEP_SECONDS);
     const length = Math.max(1, Math.ceil((decoded.duration - start) * rate));
     const offline = new OfflineAudioContext(1, length, rate);
     const source = offline.createBufferSource();
@@ -388,7 +386,8 @@ async function lastStretch(file: File) {
     const blob = new Blob([wav], { type: "audio/wav" });
     const dataUrl = await readBlob(blob);
     const base = file.name.replace(/\.[^.]+$/, "") || "call";
-    return { dataUrl, name: `${base}-last-4-minutes.wav` };
+    const trimmed = start > 0;
+    return { dataUrl, trimmed, name: trimmed ? `${base}-last-4-minutes.wav` : `${base}.wav` };
   } finally {
     await ctx.close();
   }

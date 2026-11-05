@@ -1435,10 +1435,12 @@ function techFigures(input: {
     input.billedHours != null && input.serviceHours != null && input.serviceHours > 0
       ? Math.round((input.billedHours / input.serviceHours) * 1000) / 10
       : null;
-  const recsPerVehicle = recsFromTotal(input.totalRecommendations, input.cars);
+  // Recommendations per vehicle is total recommendations divided by the typed
+  // car count; efficiency is billed hours divided by service hours. Either one
+  // clears when a number it needs is cleared.
   return {
-    ...(recsPerVehicle != null ? { recsPerVehicle } : {}),
-    ...(efficiency != null ? { efficiency } : {}),
+    recsPerVehicle: recsFromTotal(input.totalRecommendations, input.cars),
+    efficiency,
   };
 }
 
@@ -1617,7 +1619,7 @@ function LeadWriter({
             {actor === "owner"
               ? techReviewStage(week) === "manager"
                 ? "With the manager. You can still change the numbers until they submit."
-                : "Enter billed hours, BH/RO, and total recommendations. Submit sends it to the manager."
+                : "Enter billed hours, BH/RO, total recommendations, and cars. Submit sends it to the manager."
               : "Add service hours and every note, then submit."}
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -1663,16 +1665,18 @@ function LeadWriter({
                 if (
                   latest.billedHours == null ||
                   latest.hoursPerRepairOrder == null ||
-                  latest.totalRecommendations == null
+                  latest.totalRecommendations == null ||
+                  latest.cars == null
                 ) {
-                  setNotice("Add billed hours, BH/RO, and total recommendations first.");
+                  setNotice("Add billed hours, BH/RO, total recommendations, and cars first.");
                   return;
                 }
                 setSending(true);
-                void keep({ ...latest, reviewStage: "manager" }, false).finally(() => {
-                  setSending(false);
-                  setNotice("Sent to the manager.");
-                });
+                setNotice("");
+                void keep({ ...latest, reviewStage: "manager" }, false)
+                  .then(() => setNotice("Sent to the manager."))
+                  .catch(() => setNotice("Not sent. Try again."))
+                  .finally(() => setSending(false));
                 return;
               }
               const gaps = managerGaps(latest);
@@ -1702,7 +1706,11 @@ function LeadWriter({
                       if (!latest) return;
                       setConfirming(false);
                       setSending(true);
-                      void keep({ ...latest, reviewStage: "locked", submitted: true }, true);
+                      setNotice("");
+                      void keep({ ...latest, reviewStage: "locked", submitted: true }, true).catch(() => {
+                        setSending(false);
+                        setNotice("Not saved. Try again.");
+                      });
                     }}
                   >
                     i am for reals
@@ -1861,7 +1869,7 @@ function ManagerSignOff({
             void onKeep(saved, false)
               .then(() => {
                 const shop = shops.find((item) => item.id === tech.shopId);
-                void mailManagerReview({
+                return mailManagerReview({
                   data: {
                     shopId: tech.shopId,
                     managerName: tech.name,
@@ -1878,8 +1886,19 @@ function ManagerSignOff({
                       word: levelWord(saved.scores[category.id], "manager"),
                     })),
                   },
-                });
-                onDone();
+                })
+                  .then((result) => {
+                    if (result.ok) {
+                      onDone();
+                      return;
+                    }
+                    setSending(false);
+                    setSavedNote("Locked, but the email did not go out.");
+                  })
+                  .catch(() => {
+                    setSending(false);
+                    setSavedNote("Locked, but the email did not go out.");
+                  });
               })
               .catch(() => {
                 setSending(false);

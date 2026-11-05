@@ -233,9 +233,9 @@ export const useBoard = create<BoardState>()(
           categories: seedCategories,
           viewer: "guest",
           lens: "owner",
-          dayReports: state.dayReports ?? [],
-          calls: state.calls ?? [],
-          cashTransfers: state.cashTransfers ?? [],
+          dayReports: [],
+          calls: [],
+          cashTransfers: [],
           boardReady: false,
         });
       },
@@ -244,9 +244,8 @@ export const useBoard = create<BoardState>()(
         categories: state.categories,
         techs: state.techs,
         weeks: state.weeks,
-        dayReports: state.dayReports,
-        calls: state.calls,
-        cashTransfers: state.cashTransfers,
+        // Calls (with their audio), cash and End of Day reports come from the
+        // server each visit and are not kept in browser storage.
         lens: state.lens,
         viewer: state.viewer,
         sampleCrew: state.sampleCrew,

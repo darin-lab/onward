@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Button, fieldClass } from "@/components/board/ui";
 import { formatMoney } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
+import { deleteCash, recordPickup, requestCash } from "@/lib/board/records.functions";
+import { refreshCash } from "@/lib/board/shared";
 import { cn } from "@/lib/cn";
 
 function readAmount(value: string) {
@@ -34,9 +36,22 @@ export function CashPanel({
   managerId: string;
   shopId: string;
 }) {
-  const requestCash = useBoard((state) => state.requestCash);
-  const updateCash = useBoard((state) => state.updateCash);
-  const deleteCash = useBoard((state) => state.deleteCash);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const run = (work: Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setProblem("");
+    void work
+      .then(() => {
+        after?.();
+        return refreshCash();
+      })
+      .catch(() => setProblem("That did not save. Try again."))
+      .finally(() => setBusy(false));
+  };
+  useEffect(() => {
+    void refreshCash().catch(() => undefined);
+  }, []);
   const transfers = useBoard((state) => state.cashTransfers ?? []);
   const shops = useBoard((state) => state.shops);
   const [open, setOpen] = useState(false);
@@ -85,27 +100,20 @@ export function CashPanel({
           </label>
           <Button
             className="mt-3"
-            disabled={!ready || !chosenShop}
+            disabled={!ready || !chosenShop || busy}
             onClick={() => {
               if (!ready || !chosenShop) return;
-              requestCash({
-                id: `cash-${Date.now()}`,
-                shopId: chosenShop,
-                managerId,
-                kind: "pickup",
-                requested: ready,
-                pickedUp: null,
-                requestedAt: new Date().toISOString(),
-                pickedUpAt: null,
+              run(requestCash({ data: { shopId: chosenShop, amount: ready } }), () => {
+                setAmount("");
+                setOpen(false);
               });
-              setAmount("");
-              setOpen(false);
             }}
           >
             Submit
           </Button>
         </div>
       ) : null}
+      {problem ? <p className="mt-3 text-sm text-honey">{problem}</p> : null}
       <ul className="mt-5 space-y-2">
         {rows.length === 0 ? <li className="text-sm text-muted">No cash entries yet.</li> : null}
         {rows.map((item) => {
@@ -140,7 +148,8 @@ export function CashPanel({
                 <button
                   type="button"
                   className="shrink-0 text-sm text-muted"
-                  onClick={() => deleteCash(item.id)}
+                  disabled={busy}
+                  onClick={() => run(deleteCash({ data: { id: item.id } }))}
                 >
                   Delete
                 </button>
@@ -157,11 +166,10 @@ export function CashPanel({
                     className={cn(fieldClass, "max-w-40")}
                   />
                   <Button
-                    disabled={!pickupAmount}
+                    disabled={!pickupAmount || busy}
                     onClick={() => {
                       if (!pickupAmount) return;
-                      updateCash(item.id, item.requested, pickupAmount);
-                      setOpenId(null);
+                      run(recordPickup({ data: { id: item.id, amount: pickupAmount } }), () => setOpenId(null));
                     }}
                   >
                     Save

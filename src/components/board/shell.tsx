@@ -130,6 +130,10 @@ function Logo() {
 }
 
 function applySession(session: { personId: string; role: string } | null) {
+  if (session) {
+    // Calls and cash are only listed for a signed-in person.
+    void import("@/lib/board/shared").then((shared) => shared.refreshRecords());
+  }
   if (!session) {
     useBoard.setState({ viewer: "guest", lens: "owner" });
     return;

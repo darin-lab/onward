@@ -124,6 +124,8 @@ export type PhoneCall = {
   createdAt: string;
   answers: PhoneAnswer[];
   sample?: boolean;
+  /** Set by the server list; the clip itself is fetched only when played. */
+  hasAudio?: boolean;
 };
 
 export type CashTransfer = {

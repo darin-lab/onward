@@ -1,6 +1,6 @@
 import { loadBoard, saveBoard, saveWeek, type BoardSnapshot } from "@/lib/board/board.functions";
-import type { WeekLog } from "@/lib/board/model";
-import { sampleReflections } from "@/components/board/phone-call";
+import { listCalls, listCash } from "@/lib/board/records.functions";
+import { isOwnerViewer, type WeekLog } from "@/lib/board/model";
 import { seedCategories, seedShops } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
 
@@ -10,13 +10,19 @@ function snapshot(): BoardSnapshot {
     shops: state.shops,
     categories: state.categories,
     techs: state.techs,
-    weeks: state.weeks,
-    dayReports: state.dayReports,
-    calls: state.calls ?? [],
-    cashTransfers: state.cashTransfers ?? [],
+    // The server keeps reviews, calls, cash and End of Day reports in their own
+    // tables; the board save only carries shops, habits and the crew.
+    weeks: [],
+    dayReports: [],
+    calls: [],
+    cashTransfers: [],
     sampleCrew: state.sampleCrew,
     prelaunchCleared: true,
   };
+}
+
+function boardKey(next: BoardSnapshot) {
+  return JSON.stringify([next.shops, next.categories, next.techs, next.sampleCrew]);
 }
 
 let ready = false;
@@ -28,8 +34,10 @@ function scheduleSave() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
+    // Only Darin and Arun change shops, habits and the crew.
+    if (!isOwnerViewer(useBoard.getState().viewer)) return;
     const next = snapshot();
-    const encoded = JSON.stringify(next);
+    const encoded = boardKey(next);
     if (encoded === lastSaved) return;
     lastSaved = encoded;
     void saveBoard({ data: next }).catch(() => {
@@ -117,22 +125,91 @@ async function connect() {
       weeks,
     });
     if (changed || habitsChanged || addressChanged) {
-      await saveBoard({ data: snapshot() });
+      await saveBoard({ data: snapshot() }).catch(() => undefined);
     }
   } else {
     useBoard.setState({ weeks: [] });
-    await saveBoard({ data: snapshot() });
+    await saveBoard({ data: snapshot() }).catch(() => undefined);
   }
-  if (import.meta.env.DEV) {
-    const fresh = sampleReflections();
-    const current = useBoard.getState().calls ?? [];
-    const rest = current.filter((call) => !call.sample && !fresh.some((item) => item.id === call.id));
-    useBoard.setState({ calls: [...rest, ...fresh] });
-  }
-  lastSaved = JSON.stringify(snapshot());
+  lastSaved = boardKey(snapshot());
+  for (const week of useBoard.getState().weeks) synced.set(weekKey(week), JSON.stringify(week));
   ready = true;
-  useBoard.setState({ boardReady: true });
-  useBoard.subscribe(() => scheduleSave());
+  useBoard.setState({ boardReady: true, calls: [], cashTransfers: [], dayReports: [] });
+  void refreshRecords();
+  useBoard.subscribe(() => {
+    scheduleSave();
+    scheduleWeekSave();
+  });
+}
+
+/** Pull this person's waiting call reflections and recent cash pickups. */
+export async function refreshRecords() {
+  const [calls, cash] = await Promise.all([
+    listCalls().catch(() => null),
+    listCash().catch(() => null),
+  ]);
+  if (calls) useBoard.setState({ calls });
+  if (cash) useBoard.setState({ cashTransfers: cash });
+}
+
+export async function refreshCalls() {
+  const calls = await listCalls();
+  useBoard.setState({ calls });
+  return calls;
+}
+
+export async function refreshCash() {
+  const cashTransfers = await listCash();
+  useBoard.setState({ cashTransfers });
+  return cashTransfers;
+}
+
+/* Reviews also save on their own a moment after an edit, one row at a time,
+   so leaving the page without pressing Save does not lose the work. */
+const synced = new Map<string, string>();
+let weekTimer: ReturnType<typeof setTimeout> | null = null;
+
+function weekKey(week: WeekLog) {
+  return `${week.techId}:${week.weekStart}`;
+}
+
+function untouched(week: WeekLog) {
+  return (
+    week.billedHours == null &&
+    week.cars == null &&
+    week.totalRecommendations == null &&
+    week.hoursPerRepairOrder == null &&
+    week.grossProfit == null &&
+    week.serviceHours == null &&
+    !week.working &&
+    !week.practice &&
+    !week.billedNote &&
+    !week.carsNote &&
+    !week.recsNote &&
+    !week.efficiencyNote &&
+    week.boomerangs == null &&
+    !week.reviewStage &&
+    !week.darinReady &&
+    !week.arunReady
+  );
+}
+
+function scheduleWeekSave() {
+  if (!ready) return;
+  if (weekTimer) clearTimeout(weekTimer);
+  weekTimer = setTimeout(() => {
+    weekTimer = null;
+    const state = useBoard.getState();
+    const person = state.techs.find((tech) => tech.id === state.viewer);
+    if (!isOwnerViewer(state.viewer) && person?.kind !== "manager") return;
+    for (const week of state.weeks) {
+      const encoded = JSON.stringify(week);
+      if (synced.get(weekKey(week)) === encoded) continue;
+      if (!synced.has(weekKey(week)) && untouched(week)) continue;
+      synced.set(weekKey(week), encoded);
+      void storeWeek(week).catch(() => synced.delete(weekKey(week)));
+    }
+  }, 1500);
 }
 
 export async function flushSharedBoard() {
@@ -141,8 +218,9 @@ export async function flushSharedBoard() {
     timer = null;
   }
   if (!ready) return false;
+  if (!isOwnerViewer(useBoard.getState().viewer)) return true;
   const next = snapshot();
-  const encoded = JSON.stringify(next);
+  const encoded = boardKey(next);
   if (encoded === lastSaved) return true;
   lastSaved = encoded;
   try {
@@ -154,13 +232,22 @@ export async function flushSharedBoard() {
   }
 }
 
+/**
+ * Saves one review. The server merges it with what is stored (see saveWeek),
+ * so the week that comes back is the one to show.
+ */
 export async function storeWeek(week: WeekLog) {
+  const sent = JSON.stringify(week);
   const result = await saveWeek({ data: week });
   const stored = result?.week;
   if (!result?.ok || !stored) return null;
-  if ((week.grossProfit ?? null) !== (stored.grossProfit ?? null)) return null;
-  if ((week.working ?? "") !== (stored.working ?? "")) return null;
-  if ((week.practice ?? "") !== (stored.practice ?? "")) return null;
-  useBoard.getState().upsertWeek(stored);
+  const current = useBoard
+    .getState()
+    .weeks.find((item) => item.techId === week.techId && item.weekStart === week.weekStart);
+  // Don't overwrite something typed while the save was on its way.
+  if (!current || JSON.stringify(current) === sent || result.locked) {
+    synced.set(weekKey(stored), JSON.stringify(stored));
+    useBoard.getState().upsertWeek(stored);
+  }
   return stored;
 }

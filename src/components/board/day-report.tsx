@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/lib/board/model";
+import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey, type DayReport } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
-import { mailDayReport } from "@/lib/board/mail-report.functions";
+import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
+import { refreshCalls } from "@/lib/board/shared";
 import { CallReview, pendingCalls } from "@/components/board/phone-call";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
@@ -152,8 +153,6 @@ function belowGoal(key: DayFieldKey, raw: string | undefined) {
 
 export function DayReportForm({ shopId }: { shopId: string }) {
   const shop = useBoard((state) => state.shops.find((item) => item.id === shopId));
-  const reports = useBoard((state) => state.dayReports);
-  const upsertDayReport = useBoard((state) => state.upsertDayReport);
   const managerId = useBoard(
     (state) => state.techs.find((person) => person.kind === "manager" && person.shopId === shopId)?.id,
   );
@@ -162,24 +161,43 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const techs = useBoard((state) => state.techs);
   const calls = useBoard((state) => state.calls ?? []);
   const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState("");
   const [date, setDate] = useState(todayISO);
-  const saved = reports.find((report) => report.shopId === shopId && report.date === date);
-  const [draft, setDraft] = useState<Partial<Record<DayFieldKey, string>>>(saved?.values ?? {});
-  const [notes, setNotes] = useState<Partial<Record<DayFieldKey, string>>>(saved?.notes ?? {});
-  const [answers, setAnswers] = useState<Partial<Record<DayPromptKey, string>>>(saved?.answers ?? {});
-  const [draftDate, setDraftDate] = useState(date);
+  const [saved, setSaved] = useState<DayReport | null>(null);
+  const [draft, setDraft] = useState<Partial<Record<DayFieldKey, string>>>({});
+  const [notes, setNotes] = useState<Partial<Record<DayFieldKey, string>>>({});
+  const [answers, setAnswers] = useState<Partial<Record<DayPromptKey, string>>>({});
 
-  if (draftDate !== date) {
-    setDraftDate(date);
-    setDraft(saved?.values ?? {});
-    setNotes(saved?.notes ?? {});
-    setAnswers(saved?.answers ?? {});
-  }
+  useEffect(() => {
+    // A call reflection sent while this page was closed has to show up here.
+    void refreshCalls().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    setSaved(null);
+    setDraft({});
+    setNotes({});
+    setAnswers({});
+    void getDayReport({ data: { shopId, date } })
+      .then((report) => {
+        if (cancel || !report) return;
+        setSaved(report);
+        setDraft(report.values ?? {});
+        setNotes(report.notes ?? {});
+        setAnswers(report.answers ?? {});
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [shopId, date]);
 
   const submitted = Boolean(saved?.submitted);
   const best = BEST_MONTH[shopId];
   const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
-  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.serviceHours));
+  // Efficiency is billed hours divided by work hours.
+  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.workHours));
   const proficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.availableHours));
   const shown: Partial<Record<DayFieldKey, string>> = {
     ...draft,
@@ -337,32 +355,28 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         onClick={() => {
           if (sending || !ready) return;
           setSending(true);
-          const report = {
-            shopId,
-            date,
-            values: shown,
-            notes,
-            answers,
-            submitted: true,
-          };
-          upsertDayReport(report);
-          void mailDayReport({
-            data: {
-              shopId,
-              shopName: shop?.name ?? shopId,
-              date,
-              values: shown,
-              notes,
-              answers,
-            },
-          });
-          if (window.history.length > 1) window.history.back();
-          else if (managerId) navigate({ to: "/t/$techId", params: { techId: managerId } });
-          else navigate({ to: "/" });
+          setProblem("");
+          void submitDayReport({ data: { shopId, date, values: shown, notes, answers } })
+            .then((result) => {
+              if (!result.mailed) {
+                setSending(false);
+                setProblem("Saved, but the email did not go out. Press Submit again to resend it.");
+                return;
+              }
+              // Leave the page only after the email has gone out.
+              if (window.history.length > 1) window.history.back();
+              else if (managerId) navigate({ to: "/t/$techId", params: { techId: managerId } });
+              else navigate({ to: "/" });
+            })
+            .catch(() => {
+              setSending(false);
+              setProblem("That report did not send. Check the notes and try again.");
+            });
         }}
       >
         Submit
       </Button>
+      {problem ? <p className="mt-3 text-sm text-honey">{problem}</p> : null}
       <p className="mt-3 text-sm text-muted">
         {ready ? "Submit when the day is filled in." : "Each note needs at least 13 characters."}
       </p>

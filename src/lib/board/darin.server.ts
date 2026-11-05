@@ -24,6 +24,46 @@ async function readSession() {
   return personId;
 }
 
+export type Viewer = {
+  personId: string;
+  role: "owner" | "manager" | "technician";
+  name: string;
+  shopId: string;
+};
+
+/** The signed-in person, or null when there is no valid PIN cookie. */
+export async function currentViewer(): Promise<Viewer | null> {
+  let personId: string;
+  try {
+    personId = await readSession();
+  } catch {
+    return null;
+  }
+  if (personId === "darin") return { personId, role: "owner", name: "Darin Dinis", shopId: "" };
+  if (personId === "arun") return { personId, role: "owner", name: "Arun", shopId: "" };
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  const rows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
+  const raw = rows[0]?.data;
+  const board = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : { techs: [] };
+  const person = (board.techs ?? []).find(
+    (tech: { id: string; kind?: string; name?: string; shopId?: string }) => tech.id === personId,
+  );
+  if (!person) return null;
+  return {
+    personId,
+    role: person.kind === "manager" ? "manager" : "technician",
+    name: person.name || personId,
+    shopId: person.shopId || "",
+  };
+}
+
+export async function requireViewer() {
+  const viewer = await currentViewer();
+  if (!viewer) throw new Error("Not allowed");
+  return viewer;
+}
+
 export async function requireDarin() {
   const personId = await readSession();
   if (personId !== "darin") throw new Error("Not allowed");

@@ -1,4 +1,3 @@
-import { createServerFn } from "@tanstack/react-start";
 import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/lib/board/model";
 import { owners } from "@/lib/board/owners";
 
@@ -19,75 +18,66 @@ type MailInput = {
   answers?: Partial<Record<DayPromptKey, string>>;
 };
 
-export const mailDayReport = createServerFn({ method: "POST" })
-  .validator((input: unknown): MailInput => {
-    const data = input as Partial<MailInput>;
-    if (!data || typeof data.shopId !== "string" || typeof data.date !== "string") {
-      throw new Error("Invalid report");
-    }
-    return {
-      shopId: data.shopId,
-      shopName: typeof data.shopName === "string" ? data.shopName : data.shopId,
-      date: data.date,
-      values: data.values ?? {},
-      notes: data.notes ?? {},
-      answers: data.answers ?? {},
-    };
-  })
-  .handler(async ({ data }) => {
-    const user = process.env.GMAIL_USER?.trim();
-    const pass = process.env.GMAIL_APP_PASSWORD?.trim();
-    const to = [
-      ...new Set([...owners.map((owner) => owner.email), ...Object.values(managers)]),
-    ];
-    if (!user || !pass) {
-      return { ok: false as const, reason: "not-configured" as const };
-    }
-    const lines = DAY_FIELDS.map((field) => {
-      const value = data.values[field.key]?.trim() || "—";
-      const note = data.notes?.[field.key]?.trim();
-      const block = [`${field.label}`, value];
-      if (note) block.push("", "How will you grow that number tomorrow?", note);
-      return block.join("\n");
-    });
-    const prompts = DAY_PROMPTS.map((prompt) => ({
-      label: prompt.label,
-      value: data.answers?.[prompt.key]?.trim() || "—",
-    }));
-    const when = readableDate(data.date);
-    const text = [
-      "End of Day Report",
-      data.shopName,
-      when,
-      "",
-      ...lines.flatMap((block) => [block, ""]),
-      ...prompts.flatMap((prompt) => [prompt.label, prompt.value, ""]),
-    ].join("\n");
-    const nodemailer = await import("nodemailer");
-    const transport = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user, pass },
-    });
-    await transport.sendMail({
-      from: user,
-      to: to.join(", "),
-      subject: `End of Day Report — ${data.shopName} — ${data.date}`,
-      text,
-      html: reportHtml({
-        shopName: data.shopName,
-        when,
-        rows: DAY_FIELDS.map((field) => ({
-          label: field.label,
-          value: data.values[field.key]?.trim() || "—",
-          note: data.notes?.[field.key]?.trim() || "",
-        })),
-        prompts,
-      }),
-    });
-    return { ok: true as const };
+export type DayReportMail = MailInput;
+
+/**
+ * Server-only. Emails an End of Day report to every manager, Darin and Arun.
+ * Called from submitDayReport once the report is stored.
+ */
+export async function sendDayReportMail(data: DayReportMail) {
+  const user = process.env.GMAIL_USER?.trim();
+  const pass = process.env.GMAIL_APP_PASSWORD?.trim();
+  const to = [
+    ...new Set([...owners.map((owner) => owner.email), ...Object.values(managers)]),
+  ];
+  if (!user || !pass) {
+    return { ok: false as const, reason: "not-configured" as const };
+  }
+  const lines = DAY_FIELDS.map((field) => {
+    const value = data.values[field.key]?.trim() || "—";
+    const note = data.notes?.[field.key]?.trim();
+    const block = [`${field.label}`, value];
+    if (note) block.push("", "How will you grow that number tomorrow?", note);
+    return block.join("\n");
   });
+  const prompts = DAY_PROMPTS.map((prompt) => ({
+    label: prompt.label,
+    value: data.answers?.[prompt.key]?.trim() || "—",
+  }));
+  const when = readableDate(data.date);
+  const text = [
+    "End of Day Report",
+    data.shopName,
+    when,
+    "",
+    ...lines.flatMap((block) => [block, ""]),
+    ...prompts.flatMap((prompt) => [prompt.label, prompt.value, ""]),
+  ].join("\n");
+  const nodemailer = await import("nodemailer");
+  const transport = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user, pass },
+  });
+  await transport.sendMail({
+    from: user,
+    to: to.join(", "),
+    subject: `End of Day Report — ${data.shopName} — ${data.date}`,
+    text,
+    html: reportHtml({
+      shopName: data.shopName,
+      when,
+      rows: DAY_FIELDS.map((field) => ({
+        label: field.label,
+        value: data.values[field.key]?.trim() || "—",
+        note: data.notes?.[field.key]?.trim() || "",
+      })),
+      prompts,
+    }),
+  });
+  return { ok: true as const };
+}
 
 function readableDate(iso: string) {
   const [year, month, day] = iso.split("-").map(Number);
