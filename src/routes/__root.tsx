@@ -5,7 +5,7 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { useBoard } from "@/lib/board/store";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Onward";
+const APP_NAME = "Driven Onward";
 
 export const Route = createRootRoute({
   head: () => ({
