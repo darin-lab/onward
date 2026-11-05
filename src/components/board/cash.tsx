@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { deleteCash, recordPickup, requestCash } from "@/lib/board/records.functions";
 import { refreshCash } from "@/lib/board/shared";
+import { viewingAs, writable } from "@/lib/board/view-as";
 import { cn } from "@/lib/cn";
 
 function readAmount(value: string) {
@@ -38,15 +39,15 @@ export function CashPanel({
 }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const run = (work: Promise<unknown>, after?: () => void) => {
+  const run = (work: () => Promise<unknown>, after?: () => void) => {
     setBusy(true);
     setProblem("");
-    void work
+    void writable(work)
       .then(() => {
         after?.();
         return refreshCash();
       })
-      .catch(() => setProblem("That did not save. Try again."))
+      .catch(() => setProblem(viewingAs() ? "View only. Nothing was saved." : "That did not save. Try again."))
       .finally(() => setBusy(false));
   };
   useEffect(() => {
@@ -103,7 +104,7 @@ export function CashPanel({
             disabled={!ready || !chosenShop || busy}
             onClick={() => {
               if (!ready || !chosenShop) return;
-              run(requestCash({ data: { shopId: chosenShop, amount: ready } }), () => {
+              run(() => requestCash({ data: { shopId: chosenShop, amount: ready } }), () => {
                 setAmount("");
                 setOpen(false);
               });
@@ -149,7 +150,7 @@ export function CashPanel({
                   type="button"
                   className="shrink-0 text-sm text-muted"
                   disabled={busy}
-                  onClick={() => run(deleteCash({ data: { id: item.id } }))}
+                  onClick={() => run(() => deleteCash({ data: { id: item.id } }))}
                 >
                   Delete
                 </button>
@@ -169,7 +170,7 @@ export function CashPanel({
                     disabled={!pickupAmount || busy}
                     onClick={() => {
                       if (!pickupAmount) return;
-                      run(recordPickup({ data: { id: item.id, amount: pickupAmount } }), () => setOpenId(null));
+                      run(() => recordPickup({ data: { id: item.id, amount: pickupAmount } }), () => setOpenId(null));
                     }}
                   >
                     Save

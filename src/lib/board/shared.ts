@@ -3,6 +3,7 @@ import { listCalls, listCash } from "@/lib/board/records.functions";
 import { isOwnerViewer, type WeekLog } from "@/lib/board/model";
 import { seedCategories, seedShops } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
+import { viewingAs, writable } from "@/lib/board/view-as";
 
 function snapshot(): BoardSnapshot {
   const state = useBoard.getState();
@@ -34,8 +35,9 @@ function scheduleSave() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
-    // Only Darin and Arun change shops, habits and the crew.
-    if (!isOwnerViewer(useBoard.getState().viewer)) return;
+    // Only Darin and Arun change shops, habits and the crew, and never while
+    // they are viewing the app as someone else.
+    if (viewingAs() || !isOwnerViewer(useBoard.getState().viewer)) return;
     const next = snapshot();
     const encoded = boardKey(next);
     if (encoded === lastSaved) return;
@@ -244,6 +246,7 @@ function scheduleWeekSave() {
   weekTimer = setTimeout(() => {
     weekTimer = null;
     const state = useBoard.getState();
+    if (state.viewAs) return;
     const person = state.techs.find((tech) => tech.id === state.viewer);
     if (!isOwnerViewer(state.viewer) && person?.kind !== "manager") return;
     for (const week of state.weeks) {
@@ -262,7 +265,7 @@ export async function flushSharedBoard() {
     timer = null;
   }
   if (!ready) return false;
-  if (!isOwnerViewer(useBoard.getState().viewer)) return true;
+  if (viewingAs() || !isOwnerViewer(useBoard.getState().viewer)) return true;
   const next = snapshot();
   const encoded = boardKey(next);
   if (encoded === lastSaved) return true;
@@ -282,7 +285,7 @@ export async function flushSharedBoard() {
  */
 export async function storeWeek(week: WeekLog) {
   const sent = JSON.stringify(week);
-  const result = await saveWeek({ data: week });
+  const result = await writable(() => saveWeek({ data: week }));
   const stored = result?.week;
   if (!result?.ok || !stored) return null;
   const current = useBoard

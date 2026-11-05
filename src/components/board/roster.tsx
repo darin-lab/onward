@@ -12,6 +12,7 @@ import {
   priorWeekISO,
   shopLights,
   shopRecord,
+  unreadReview,
   weekRangeLabel,
   type Tech,
   type WeekLog,
@@ -118,7 +119,12 @@ export function Roster() {
           const billed = week?.billedHours;
           return (
             <li key={tech.id} className="rise" style={{ animationDelay: `${index * 50}ms` }}>
-              <div className="flex h-full flex-col rounded-2xl bg-surface p-4 shadow-border">
+              <div className="relative flex h-full flex-col rounded-2xl bg-surface p-4 shadow-border">
+                {tech.kind === "manager" && viewer === tech.id && unreadReview(weeks, tech.id) ? (
+                  <span className="tag-flash pointer-events-none absolute -top-2.5 right-3 z-10 rounded-full px-2.5 py-0.5 font-display text-[11px] tracking-wide uppercase italic">
+                    New review
+                  </span>
+                ) : null}
                 <Link
                   to="/t/$techId"
                   params={{ techId: tech.id }}

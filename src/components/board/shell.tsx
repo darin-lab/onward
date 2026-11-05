@@ -6,6 +6,7 @@ import { fieldClass } from "@/components/board/ui";
 import { techReviewStage, focusReview } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { ToolsMenu } from "@/components/board/roster";
+import { startViewAs, stopViewAs } from "@/lib/board/view-as";
 
 type Session = { personId: string; role: string; name: string };
 
@@ -32,6 +33,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="mx-auto w-full max-w-3xl px-5 pt-5 pb-24">
         {ready && session ? (
           <>
+            <ViewAsBanner />
             <header className="mb-8 flex items-start justify-between gap-4">
               <Link to="/" className="shrink-0">
                 <Logo />
@@ -41,6 +43,7 @@ export function Shell({ children }: { children: ReactNode }) {
                   <ReviewAlert />
                   <ToolsMenu />
                   <div>
+                    {session.role === "owner" ? <ViewAsPicker ownerId={session.personId} /> : null}
                     <p className="text-sm text-ink">{session.name}</p>
                     <button
                       type="button"
@@ -70,6 +73,61 @@ export function Shell({ children }: { children: ReactNode }) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+/** Darin and Arun: look at the app as any manager or technician, view only. */
+function ViewAsPicker({ ownerId }: { ownerId: string }) {
+  const techs = useBoard((state) => state.techs);
+  const shops = useBoard((state) => state.shops);
+  const viewer = useBoard((state) => state.viewer);
+  const viewAs = useBoard((state) => state.viewAs);
+  const shopName = (id: string) => shops.find((shop) => shop.id === id)?.name ?? id;
+  const managers = techs.filter((tech) => tech.kind === "manager");
+  const crew = techs.filter((tech) => tech.kind === "technician");
+  return (
+    <select
+      aria-label="View the app as"
+      value={viewAs ? viewer : ownerId}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (next === ownerId) stopViewAs();
+        else startViewAs(ownerId, next);
+      }}
+      className="mb-1 max-w-40 rounded-md bg-raised px-2 py-1 text-xs text-ink shadow-border"
+    >
+      <option value={ownerId}>View as: me</option>
+      <optgroup label="Managers">
+        {managers.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.name} · {shopName(person.shopId)}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Technicians">
+        {crew.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.name} · {shopName(person.shopId)}
+          </option>
+        ))}
+      </optgroup>
+    </select>
+  );
+}
+
+function ViewAsBanner() {
+  const viewAs = useBoard((state) => state.viewAs);
+  const person = useBoard((state) => state.techs.find((tech) => tech.id === state.viewer));
+  if (!viewAs || !person) return null;
+  return (
+    <div className="sticky top-0 z-40 -mx-5 mb-4 flex items-center justify-between gap-3 bg-[#ffd400] px-5 py-2 text-sm text-[#2a2200]">
+      <span>
+        Viewing as <strong>{person.name}</strong>. View only: nothing saves, sends or clears.
+      </span>
+      <button type="button" onClick={stopViewAs} className="shrink-0 font-semibold underline underline-offset-4">
+        Exit
+      </button>
     </div>
   );
 }

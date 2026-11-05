@@ -7,6 +7,7 @@ import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 import { storeWeek } from "@/lib/board/shared";
 import { markReviewSeen } from "@/lib/board/board.functions";
+import { writable } from "@/lib/board/view-as";
 import { mailManagerReview } from "@/lib/board/mail-manager.functions";
 import { pullShopRange, type ShopPull } from "@/lib/board/dashboard.functions";
 import {
@@ -31,6 +32,7 @@ import {
   shopRecord,
   techReviewStage,
   takeFocusedReview,
+  unreadReview,
   weekRangeLabel,
   weekRelation,
   weeksFor,
@@ -150,6 +152,7 @@ export function TechView({ tech }: { tech: Tech }) {
     setPicked((current) => current ?? last);
   }, [boardReady, canLog, tech.id, tech.kind, viewer, startWeek]);
   // The manager's own submitted review waits for "I've read my review".
+  const unread = tech.kind === "manager" ? unreadReview(weeks, tech.id) : null;
   const needsAck = Boolean(
     active &&
       tech.kind === "manager" &&
@@ -208,7 +211,25 @@ export function TechView({ tech }: { tech: Tech }) {
           End of Day Report
         </Link>
       ) : null}
+      {tech.kind === "manager" && viewer === tech.id && unread ? (
+        <button
+          type="button"
+          onClick={() => {
+            setPicked(unread.weekStart);
+            window.setTimeout(() => {
+              document.getElementById("review-start")?.scrollIntoView({ behavior: "smooth" });
+            }, 50);
+          }}
+          className="mt-3 ml-0 block text-left sm:ml-4 sm:inline-block sm:align-bottom"
+        >
+          <span className="ready-flash block font-display text-lg font-semibold tracking-wide uppercase italic">
+            Review is ready!
+          </span>
+          <span className="block text-xs text-muted">Read it below and scroll to the bottom.</span>
+        </button>
+      ) : null}
 
+      <div id="review-start" />
       {active ? (
         <WeekSwitcher
           week={active}
@@ -2074,7 +2095,7 @@ function ReadReview({ week }: { week: WeekLog }) {
         onClick={() => {
           setSaving(true);
           setProblem("");
-          void markReviewSeen({ data: { weekStart: week.weekStart } })
+          void writable(() => markReviewSeen({ data: { weekStart: week.weekStart } }))
             .then((result) => {
               if (!result.ok || !result.week) throw new Error("not saved");
               useBoard.getState().upsertWeek(result.week);

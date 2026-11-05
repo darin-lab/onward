@@ -27,6 +27,8 @@ type BoardState = {
   cashTransfers: CashTransfer[];
   lens: string;
   viewer: string;
+  /** Set while Darin or Arun view the app as someone else (their own id). */
+  viewAs: string | null;
   sampleCrew: boolean;
   boardReady: boolean;
   setLens: (lens: string) => void;
@@ -63,6 +65,7 @@ export const useBoard = create<BoardState>()(
       ...freshSample(),
       lens: "owner",
       viewer: "guest",
+      viewAs: null,
       calls: [],
       cashTransfers: [],
       boardReady: false,

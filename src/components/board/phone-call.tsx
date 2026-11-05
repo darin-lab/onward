@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { answerCall, createCall, getCallAudio } from "@/lib/board/records.functions";
 import { refreshCalls } from "@/lib/board/shared";
+import { viewingAs, writable } from "@/lib/board/view-as";
 import type { PhoneCall, Tech } from "@/lib/board/model";
 import { isOwnerViewer } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
@@ -158,12 +159,12 @@ export function CallReview({
                 if (person.id !== call.managerId || !ready) return;
                 setSending(true);
                 setProblem("");
-                void answerCall({ data: { id: call.id, text: text.trim() } })
+                void writable(() => answerCall({ data: { id: call.id, text: text.trim() } }))
                   .then(() => refreshCalls().catch(() => undefined))
                   .then(() => onDone?.())
                   .catch(() => {
                     setSending(false);
-                    setProblem("Your reply did not send. Try again.");
+                    setProblem(viewingAs() ? "View only. Nothing was sent." : "Your reply did not send. Try again.");
                   });
               }}
             >
@@ -326,7 +327,7 @@ export function CallComposer() {
         onClick={() => {
           const manager = managers.find((person) => person.id === managerId);
           setSending(true);
-          void createCall({ data: { managerId, question: question.trim(), audio, audioName } })
+          void writable(() => createCall({ data: { managerId, question: question.trim(), audio, audioName } }))
             .then(() => {
               setQuestion("");
               setAudio("");

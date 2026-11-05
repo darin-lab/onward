@@ -242,6 +242,23 @@ export function relationLabel(relation: WeekRelation) {
   return "Earlier week";
 }
 
+/** The newest submitted weekly review this manager hasn't marked as read. */
+export function unreadReview(weeks: WeekLog[], managerId: string) {
+  return (
+    weeks
+      .filter(
+        (week) =>
+          week.techId === managerId &&
+          week.submitted &&
+          week.darinReady &&
+          week.arunReady &&
+          !week.managerSeenAt,
+      )
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+      .at(-1) ?? null
+  );
+}
+
 export type ShopLight = "red" | "green" | "off";
 
 /**

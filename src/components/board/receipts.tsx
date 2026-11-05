@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { addReceipt, listReceipts } from "@/lib/board/receipt.functions";
+import { writable } from "@/lib/board/view-as";
 import { formatMoney } from "@/lib/board/model";
 import { Button, fieldClass } from "@/components/board/ui";
 
@@ -82,7 +83,7 @@ export function ReceiptDesk() {
           setMessage("");
           void packFile(file)
             .then((packed) =>
-              addReceipt({
+              writable(() => addReceipt({
                 data: {
                   total: amount,
                   note: note.trim(),
@@ -90,7 +91,7 @@ export function ReceiptDesk() {
                   imageType: packed.type,
                   imageName: packed.name,
                 },
-              }),
+              })),
             )
             .then((result) => {
               setTotal("");

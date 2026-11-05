@@ -14,6 +14,7 @@ import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
 import { refreshCalls, refreshWeeks } from "@/lib/board/shared";
+import { viewingAs, writable } from "@/lib/board/view-as";
 import { CallReview, pendingCalls } from "@/components/board/phone-call";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
@@ -411,7 +412,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
           if (sending || !ready) return;
           setSending(true);
           setProblem("");
-          void submitDayReport({ data: { shopId, date, values: shown, notes, answers } })
+          void writable(() => submitDayReport({ data: { shopId, date, values: shown, notes, answers } }))
             .then((result) => {
               if (!result.mailed) {
                 setSending(false);
@@ -426,6 +427,10 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             .catch((error: unknown) => {
               setSending(false);
               const reason = error instanceof Error ? error.message : "";
+              if (viewingAs()) {
+                setProblem("View only. Nothing was sent.");
+                return;
+              }
               if (reason.includes("tech review")) {
                 setProblem("Finish your tech reviews first.");
                 void refreshWeeks().catch(() => undefined);

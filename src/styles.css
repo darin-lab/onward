@@ -86,12 +86,46 @@
   }
 }
 
+@keyframes ready-flash {
+  0%,
+  49% {
+    color: #ffd400;
+  }
+  50%,
+  100% {
+    color: #ff3b30;
+  }
+}
+
+@keyframes tag-flash {
+  0%,
+  49% {
+    background: #e10600;
+    color: #ffffff;
+  }
+  50%,
+  100% {
+    background: #ffd400;
+    color: #3a2a00;
+  }
+}
+
+.ready-flash {
+  animation: ready-flash 0.9s steps(1) infinite;
+}
+
+.tag-flash {
+  animation: tag-flash 0.9s steps(1) infinite;
+}
+
 .rise {
   animation: rise 420ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise {
+  .rise,
+  .ready-flash,
+  .tag-flash {
     animation: none;
   }
 }
