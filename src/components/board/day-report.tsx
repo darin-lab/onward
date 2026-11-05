@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey, type DayReport } from "@/lib/board/model";
+import {
+  DAY_FIELDS,
+  DAY_PROMPTS,
+  focusReview,
+  techReviewStage,
+  weekRangeLabel,
+  type DayFieldKey,
+  type DayPromptKey,
+  type DayReport,
+} from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
-import { refreshCalls } from "@/lib/board/shared";
+import { refreshCalls, refreshWeeks } from "@/lib/board/shared";
 import { CallReview, pendingCalls } from "@/components/board/phone-call";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
@@ -160,6 +169,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const viewer = useBoard((state) => state.viewer);
   const techs = useBoard((state) => state.techs);
   const calls = useBoard((state) => state.calls ?? []);
+  const weeks = useBoard((state) => state.weeks);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
   const [date, setDate] = useState(todayISO);
@@ -171,6 +181,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   useEffect(() => {
     // A call reflection sent while this page was closed has to show up here.
     void refreshCalls().catch(() => undefined);
+    void refreshWeeks().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -243,6 +254,50 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         total={pendingCalls(calls, person.id).length}
         lead="Let's take care of these first."
       />
+    );
+  }
+
+  // Tech reviews Darin or Arun sent to this manager come before the report.
+  // There is no skip.
+  const owed =
+    person?.kind === "manager"
+      ? weeks
+          .filter((week) => techReviewStage(week) === "manager")
+          .map((week) => ({ week, tech: techs.find((item) => item.id === week.techId) }))
+          .filter(
+            (row): row is { week: typeof row.week; tech: NonNullable<typeof row.tech> } =>
+              row.tech?.kind === "technician" && row.tech.shopId === person.shopId,
+          )
+          .sort((a, b) => a.week.weekStart.localeCompare(b.week.weekStart))
+      : [];
+  if (owed.length > 0) {
+    return (
+      <div>
+        <h1 className="mt-3 text-4xl text-ink">End of Day Report</h1>
+        <p className="mt-2 text-muted">{shop?.name}</p>
+        <Card className="mt-6">
+          <p className="font-display text-2xl text-ink">Let's take care of these first.</p>
+          <p className="mt-2 text-sm text-muted">
+            Finish and send {owed.length === 1 ? "this tech review" : "these tech reviews"}, then the
+            report opens.
+          </p>
+          <ul className="mt-5 space-y-3">
+            {owed.map(({ week, tech }) => (
+              <li key={`${tech.id}-${week.weekStart}`}>
+                <Link
+                  to="/t/$techId"
+                  params={{ techId: tech.id }}
+                  onClick={() => focusReview(tech.id, week.weekStart)}
+                  className="flex min-h-12 items-center justify-between gap-3 rounded-md bg-raised px-4 shadow-border"
+                >
+                  <span className="text-ink">{tech.name}</span>
+                  <span className="text-sm text-honey">{weekRangeLabel(week.weekStart)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
     );
   }
 
@@ -368,8 +423,14 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               else if (managerId) navigate({ to: "/t/$techId", params: { techId: managerId } });
               else navigate({ to: "/" });
             })
-            .catch(() => {
+            .catch((error: unknown) => {
               setSending(false);
+              const reason = error instanceof Error ? error.message : "";
+              if (reason.includes("tech review")) {
+                setProblem("Finish your tech reviews first.");
+                void refreshWeeks().catch(() => undefined);
+                return;
+              }
               setProblem("That report did not send. Check the notes and try again.");
             });
         }}

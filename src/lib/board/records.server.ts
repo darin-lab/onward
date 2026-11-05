@@ -185,3 +185,22 @@ export async function boardPeople(sql: Sql) {
     shopName: (id: string) => shops.find((shop) => shop.id === id)?.name ?? SHOP_NAMES[id] ?? id,
   };
 }
+
+/** Tech reviews at this shop that Darin or Arun sent and the manager has not finished. */
+export async function owedTechReviews(sql: Sql, shopId: string) {
+  const rows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
+  const raw = rows[0]?.data;
+  const board = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
+  const crew = new Set(
+    ((board.techs ?? []) as { id: string; kind: string; shopId: string }[])
+      .filter((tech) => tech.kind === "technician" && tech.shopId === shopId)
+      .map((tech) => tech.id),
+  );
+  if (crew.size === 0) return 0;
+  const weeks = await sql.query<{ tech_id: string; data: string }>("select tech_id, data from week_logs");
+  return weeks.filter((row) => {
+    if (!crew.has(row.tech_id)) return false;
+    const week = (typeof row.data === "string" ? JSON.parse(row.data) : row.data) as { reviewStage?: string };
+    return week.reviewStage === "manager";
+  }).length;
+}

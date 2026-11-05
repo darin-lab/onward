@@ -1,4 +1,4 @@
-import { loadBoard, saveBoard, saveWeek, type BoardSnapshot } from "@/lib/board/board.functions";
+import { listWeeks, loadBoard, saveBoard, saveWeek, type BoardSnapshot } from "@/lib/board/board.functions";
 import { listCalls, listCash } from "@/lib/board/records.functions";
 import { isOwnerViewer, type WeekLog } from "@/lib/board/model";
 import { seedCategories, seedShops } from "@/lib/board/seed";
@@ -140,6 +140,50 @@ async function connect() {
     scheduleSave();
     scheduleWeekSave();
   });
+  startLiveWeeks();
+}
+
+/**
+ * Pull reviews other people saved, so the leaderboard, ranks and the
+ * manager's review notices update without a reload. A review with unsaved
+ * edits on this page is left alone.
+ */
+export async function refreshWeeks() {
+  if (!ready) return;
+  const remote = await listWeeks();
+  const state = useBoard.getState();
+  const byKey = new Map(state.weeks.map((week) => [weekKey(week), week]));
+  let changed = false;
+  for (const week of remote) {
+    const key = weekKey(week);
+    const local = byKey.get(key);
+    const encoded = JSON.stringify(week);
+    if (local) {
+      const seen = synced.get(key);
+      // A blank week opened on this page but never saved is not an edit.
+      const dirty = seen === undefined ? !untouched(local) : seen !== JSON.stringify(local);
+      if (dirty || JSON.stringify(local) === encoded) continue;
+      if ((local.updatedAt ?? "") > (week.updatedAt ?? "")) continue;
+    }
+    byKey.set(key, week);
+    synced.set(key, encoded);
+    changed = true;
+  }
+  if (changed) useBoard.setState({ weeks: [...byKey.values()] });
+}
+
+let live = false;
+
+function startLiveWeeks() {
+  if (live || typeof window === "undefined") return;
+  live = true;
+  const tick = () => {
+    if (document.visibilityState !== "visible") return;
+    void refreshWeeks().catch(() => undefined);
+  };
+  window.setInterval(tick, 30_000);
+  window.addEventListener("focus", tick);
+  document.addEventListener("visibilitychange", tick);
 }
 
 /** Pull this person's waiting call reflections and recent cash pickups. */

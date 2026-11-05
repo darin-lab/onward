@@ -338,9 +338,12 @@ export const submitDayReport = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }) => {
-    await allowedShop(data.shopId);
+    const who = await allowedShop(data.shopId);
     const sql = await sqlForRecords();
-    const { insertDayReport, boardPeople } = await import("@/lib/board/records.server");
+    const { insertDayReport, boardPeople, owedTechReviews } = await import("@/lib/board/records.server");
+    if (who.role === "manager" && (await owedTechReviews(sql, data.shopId)) > 0) {
+      throw new Error("Finish the tech reviews waiting on you first");
+    }
     const report: DayReport = { ...data, submitted: true };
     await insertDayReport(sql, report, true);
     const people = await boardPeople(sql);

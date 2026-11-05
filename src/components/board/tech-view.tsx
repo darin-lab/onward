@@ -760,7 +760,7 @@ function WeekWork({
           {week.billedHours == null ? "—" : formatHours(week.billedHours)}
         </p>
       )}
-      <RankLine rank={ranks?.billedHours} total={ranks?.total} />
+      <RankLine rank={ranks?.billedHours} total={ranks?.billedTotal} />
       {detail ? (
       <MissNote
         id="billed-why"
@@ -890,7 +890,7 @@ function WeekWork({
               {week.cars == null ? "—" : formatHours(Math.round(week.cars))}
             </p>
           )}
-          <RankLine rank={ranks?.cars} total={ranks?.total} />
+          <RankLine rank={ranks?.cars} total={ranks?.carsTotal} />
           {detail ? (
             <MissNote
               id="cars-why"
@@ -912,7 +912,7 @@ function WeekWork({
           >
             {week.recsPerVehicle == null ? "—" : formatMoney(week.recsPerVehicle)}
           </p>
-          <RankLine rank={ranks?.recsPerVehicle} total={ranks?.total} />
+          <RankLine rank={ranks?.recsPerVehicle} total={ranks?.recsTotal} />
           {detail ? (
             <MissNote
               id="recs-why"
@@ -934,7 +934,7 @@ function WeekWork({
           >
             {week.efficiency == null ? "—" : `${formatHours(week.efficiency)}%`}
           </p>
-          <RankLine rank={ranks?.efficiency} total={ranks?.total} />
+          <RankLine rank={ranks?.efficiency} total={ranks?.efficiencyTotal} />
           {detail ? (
             <MissNote
               id="eff-why"
@@ -946,11 +946,9 @@ function WeekWork({
           ) : null}
         </div>
       </div>
-      {ranks == null ? (
-        <p className="mt-4 text-sm text-muted">
-          Rank shows under each number once every technician's week is in.
-        </p>
-      ) : null}
+      <p className="mt-4 text-sm text-muted">
+        Rank is among the technicians whose numbers are in so far.
+      </p>
       {detail ? <Boomerangs week={week} writing={editNotes} /> : null}
     </Card>
     {editNumbers || editService || editNotes ? null : (

@@ -78,6 +78,15 @@ export const loadBoard = createServerFn({ method: "POST" }).handler(async () => 
   return snapshot;
 });
 
+/** Every saved review, for keeping open pages and the leaderboard current. */
+export const listWeeks = createServerFn({ method: "GET" }).handler(async () => {
+  const { requireViewer } = await import("@/lib/board/darin.server");
+  await requireViewer();
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  return weekRows(sql);
+});
+
 /**
  * Saves only the board itself: shops, habits and the crew list. Reviews go
  * through saveWeek (week_logs), and calls, cash and End of Day reports have

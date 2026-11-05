@@ -476,29 +476,38 @@ export function reviewsReady(techs: Tech[], weeks: WeekLog[], weekStart: string)
   });
 }
 
+/**
+ * Where a technician stands this week on each number, among the technicians
+ * whose number is already in. Updates as each review comes in instead of
+ * waiting for the whole crew.
+ */
 export function peerRanks(techs: Tech[], weeks: WeekLog[], weekStart: string, techId: string) {
-  if (!reviewsReady(techs, weeks, weekStart)) return null;
   const crew = techs.filter((person) => person.kind === "technician");
-  const value = (
-    id: string,
-    key: "billedHours" | "cars" | "recsPerVehicle" | "efficiency",
-  ) => weeks.find((item) => item.techId === id && item.weekStart === weekStart)?.[key] ?? null;
-  const place = (
-    key: "billedHours" | "cars" | "recsPerVehicle" | "efficiency",
-  ) => {
-    if (crew.some((person) => value(person.id, key) == null)) return undefined;
-    const ordered = [...crew].sort(
-      (a, b) =>
-        (value(b.id, key) ?? 0) - (value(a.id, key) ?? 0) || a.name.localeCompare(b.name),
+  type Key = "billedHours" | "cars" | "recsPerVehicle" | "efficiency";
+  const value = (id: string, key: Key) =>
+    weeks.find((item) => item.techId === id && item.weekStart === weekStart)?.[key] ?? null;
+  const place = (key: Key) => {
+    if (value(techId, key) == null) return { rank: undefined, total: 0 };
+    const entered = crew.filter((person) => value(person.id, key) != null);
+    const ordered = [...entered].sort(
+      (a, b) => (value(b.id, key) ?? 0) - (value(a.id, key) ?? 0) || a.name.localeCompare(b.name),
     );
-    return ordered.findIndex((person) => person.id === techId) + 1;
+    return { rank: ordered.findIndex((person) => person.id === techId) + 1, total: entered.length };
   };
+  const billed = place("billedHours");
+  const cars = place("cars");
+  const recs = place("recsPerVehicle");
+  const efficiency = place("efficiency");
   return {
     total: crew.length,
-    billedHours: place("billedHours"),
-    cars: place("cars"),
-    recsPerVehicle: place("recsPerVehicle"),
-    efficiency: place("efficiency"),
+    billedHours: billed.rank,
+    billedTotal: billed.total,
+    cars: cars.rank,
+    carsTotal: cars.total,
+    recsPerVehicle: recs.rank,
+    recsTotal: recs.total,
+    efficiency: efficiency.rank,
+    efficiencyTotal: efficiency.total,
   };
 }
 
