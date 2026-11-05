@@ -78,6 +78,38 @@ export const loadBoard = createServerFn({ method: "POST" }).handler(async () => 
   return snapshot;
 });
 
+/**
+ * A manager opened their own submitted weekly review. Records the first time
+ * only; this is what turns Darin's "Mgr" light green.
+ */
+export const markReviewSeen = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const weekStart = (input as { weekStart?: unknown })?.weekStart;
+    if (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) throw new Error("Invalid week");
+    return { weekStart };
+  })
+  .handler(async ({ data }) => {
+    const { requireViewer } = await import("@/lib/board/darin.server");
+    const viewer = await requireViewer();
+    if (viewer.role !== "manager") return { ok: false as const, week: null };
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql.query<{ data: string }>(
+      "select data from week_logs where tech_id = $1 and week_start = $2",
+      [viewer.personId, data.weekStart],
+    );
+    if (!rows[0]) return { ok: false as const, week: null };
+    const week = (typeof rows[0].data === "string" ? JSON.parse(rows[0].data) : rows[0].data) as WeekLog;
+    if (!(week.submitted && week.darinReady && week.arunReady)) return { ok: false as const, week: null };
+    if (week.managerSeenAt) return { ok: true as const, week };
+    const next: WeekLog = { ...week, managerSeenAt: new Date().toISOString() };
+    await sql.query(
+      `update week_logs set data = $3, updated_at = now() where tech_id = $1 and week_start = $2`,
+      [viewer.personId, data.weekStart, JSON.stringify(next)],
+    );
+    return { ok: true as const, week: next };
+  });
+
 /** Every saved review, for keeping open pages and the leaderboard current. */
 export const listWeeks = createServerFn({ method: "GET" }).handler(async () => {
   const { requireViewer } = await import("@/lib/board/darin.server");

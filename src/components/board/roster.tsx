@@ -10,8 +10,10 @@ import {
   isOwnerViewer,
   peopleInLens,
   priorWeekISO,
+  shopLights,
   shopRecord,
   weekRangeLabel,
+  type Tech,
   type WeekLog,
 } from "@/lib/board/model";
 import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
@@ -134,6 +136,9 @@ export function Roster() {
                         </span>
                       ) : null}
                     </h2>
+                    {tech.kind === "manager" && viewer === "darin" ? (
+                      <ShopLights techs={techs} weeks={weeks} shopId={tech.shopId} />
+                    ) : null}
                     <p className="text-sm text-muted">
                       {tech.kind === "manager" ? streetOnly(home?.address ?? "") : home?.name}
                     </p>
@@ -191,6 +196,33 @@ export function Roster() {
       ) : null}
 
       <CompanyPoll weeks={weeks} />
+    </div>
+  );
+}
+
+const LIGHT_COLOR = { red: "#e10600", green: "#3DDC84", off: "#3a3a3a" } as const;
+const LIGHT_WORD = {
+  manager: { red: "Manager review waiting to be opened", green: "Manager opened their review", off: "No manager review submitted" },
+  tech: { red: "Tech reviews waiting on the manager", green: "Tech reviews finished", off: "No tech reviews submitted" },
+} as const;
+
+/** Only shown to Darin: where each shop stands on its reviews. */
+function ShopLights({ techs, weeks, shopId }: { techs: Tech[]; weeks: WeekLog[]; shopId: string }) {
+  const lights = shopLights(techs, weeks, shopId);
+  const chip = (label: string, kind: "manager" | "tech") => (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-px text-[11px] text-ink"
+      title={LIGHT_WORD[kind][lights[kind]]}
+      aria-label={LIGHT_WORD[kind][lights[kind]]}
+    >
+      <span className="size-2 rounded-full" style={{ background: LIGHT_COLOR[lights[kind]] }} aria-hidden="true" />
+      {label}
+    </span>
+  );
+  return (
+    <div className="mt-1 mb-0.5 flex gap-1.5">
+      {chip("Mgr", "manager")}
+      {chip("Tech", "tech")}
     </div>
   );
 }

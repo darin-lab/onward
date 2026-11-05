@@ -6,6 +6,7 @@ import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 import { storeWeek } from "@/lib/board/shared";
+import { markReviewSeen } from "@/lib/board/board.functions";
 import { mailManagerReview } from "@/lib/board/mail-manager.functions";
 import { pullShopRange, type ShopPull } from "@/lib/board/dashboard.functions";
 import {
@@ -148,6 +149,24 @@ export function TechView({ tech }: { tech: Tech }) {
     if (!have.has(last)) startWeek(tech.id, last);
     setPicked((current) => current ?? last);
   }, [boardReady, canLog, tech.id, tech.kind, viewer, startWeek]);
+  // The manager opening their own submitted review turns Darin's light green.
+  const sealedUnseen = Boolean(
+    active &&
+      tech.kind === "manager" &&
+      viewer === tech.id &&
+      active.submitted &&
+      active.darinReady &&
+      active.arunReady &&
+      !active.managerSeenAt,
+  );
+  useEffect(() => {
+    if (!sealedUnseen || !active) return;
+    void markReviewSeen({ data: { weekStart: active.weekStart } })
+      .then((result) => {
+        if (result.ok && result.week) useBoard.getState().upsertWeek(result.week);
+      })
+      .catch(() => undefined);
+  }, [sealedUnseen, active?.weekStart]);
   useEffect(() => {
     if (!reviewing) return;
     window.scrollTo({ top: 0, behavior: "smooth" });

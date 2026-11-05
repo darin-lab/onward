@@ -65,6 +65,8 @@ export type WeekLog = {
   arunReady?: boolean;
   updatedAt?: string;
   snapshotAt?: string;
+  /** When the manager first opened their submitted weekly review. */
+  managerSeenAt?: string;
 };
 
 export const DAY_FIELDS = [
@@ -238,6 +240,33 @@ export function relationLabel(relation: WeekRelation) {
   if (relation === "current") return "This week, still open";
   if (relation === "next") return "This week";
   return "Earlier week";
+}
+
+export type ShopLight = "red" | "green" | "off";
+
+/**
+ * Darin's two lights on a shop card.
+ * Manager: red once the manager's weekly review is submitted and they haven't
+ * opened it yet; green once they have.
+ * Tech: red while any tech review Darin or Arun submitted is waiting on the
+ * manager; green once every submitted one is finished.
+ */
+export function shopLights(techs: Tech[], weeks: WeekLog[], shopId: string) {
+  const manager = techs.find((person) => person.kind === "manager" && person.shopId === shopId);
+  const reviewed = weeks
+    .filter((week) => week.techId === manager?.id && week.submitted && week.darinReady && week.arunReady)
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+    .at(-1);
+  const managerLight: ShopLight = !reviewed ? "off" : reviewed.managerSeenAt ? "green" : "red";
+  const crew = new Set(
+    techs.filter((person) => person.kind === "technician" && person.shopId === shopId).map((person) => person.id),
+  );
+  const sent = weeks.filter(
+    (week) => crew.has(week.techId) && (week.reviewStage === "manager" || week.reviewStage === "locked"),
+  );
+  const techLight: ShopLight =
+    sent.length === 0 ? "off" : sent.some((week) => week.reviewStage === "manager") ? "red" : "green";
+  return { manager: managerLight, tech: techLight };
 }
 
 export function techReviewStage(week?: WeekLog | null) {
