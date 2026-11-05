@@ -4,6 +4,8 @@ import {
   formatHours,
   formatMoney,
   formatRecord,
+  leaderboardMonth,
+  monthName,
   monthRecsPerVehicle,
   type Tech,
   type WeekLog,
@@ -23,14 +25,16 @@ export function CompanyPoll({
   const weeks = weeksOverride ?? storedWeeks;
   const shops = useBoard((state) => state.shops);
   const billed = companyPoll(techs, weeks);
-  const recs = recommendationsBoard(techs, weeks);
+  const month = leaderboardMonth(techs, weeks);
+  const recs = recommendationsBoard(techs, weeks, month);
+  const label = monthName(month);
 
   return (
     <section className="mt-10">
       <h2 className="text-2xl">Leaderboard</h2>
       <div className="mt-4 grid gap-8 sm:grid-cols-2">
       <Board
-        metric="Billed hours this month"
+        metric={`Billed hours · ${label}`}
         rows={billed.map((row) => ({
           tech: row.tech,
           rank: row.rank,
@@ -42,7 +46,7 @@ export function CompanyPoll({
         highlightId={highlightId}
       />
       <Board
-        metric="Recommendations per vehicle this month"
+        metric={`Recommendations per vehicle · ${label}`}
         rows={recs}
         shops={shops}
         highlightId={highlightId}
@@ -52,11 +56,11 @@ export function CompanyPoll({
   );
 }
 
-function recommendationsBoard(techs: Tech[], weeks: WeekLog[]) {
+function recommendationsBoard(techs: Tech[], weeks: WeekLog[], month: string) {
   const rows = techs
     .filter((person) => person.kind === "technician")
     .map((tech) => {
-      const amount = monthRecsPerVehicle(weeks, tech.id);
+      const amount = monthRecsPerVehicle(weeks, tech.id, month);
       return {
         tech,
         amount,

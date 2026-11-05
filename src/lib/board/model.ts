@@ -563,20 +563,45 @@ export function monthKey(now = new Date()) {
   return `${year}-${month}`;
 }
 
-export function monthWeeks(weeks: WeekLog[], techId: string, now = new Date()) {
-  const prefix = monthKey(now);
-  return weeksFor(weeks, techId).filter((week) => week.weekStart.startsWith(prefix));
+/**
+ * The month the leaderboards show: the newest month that has a technician's
+ * numbers in it. A review week counts toward the month it starts in, so early
+ * in a month the board keeps showing last month until this month's numbers
+ * arrive, instead of going blank.
+ */
+export function leaderboardMonth(techs: Tech[], weeks: WeekLog[], now = new Date()) {
+  const crew = new Set(techs.filter((person) => person.kind === "technician").map((person) => person.id));
+  const current = monthKey(now);
+  const months = weeks
+    .filter(
+      (week) =>
+        crew.has(week.techId) &&
+        (week.billedHours != null || week.recsPerVehicle != null) &&
+        week.weekStart.slice(0, 7) <= current,
+    )
+    .map((week) => week.weekStart.slice(0, 7))
+    .sort();
+  return months.at(-1) ?? current;
 }
 
-export function monthBilledHours(weeks: WeekLog[], techId: string, now = new Date()) {
-  const entered = monthWeeks(weeks, techId, now).filter((week) => week.billedHours != null);
+export function monthName(month: string) {
+  const [year, number] = month.split("-").map(Number);
+  return new Date(year ?? 2026, (number ?? 1) - 1, 1).toLocaleDateString("en-US", { month: "long" });
+}
+
+export function monthWeeks(weeks: WeekLog[], techId: string, month = monthKey()) {
+  return weeksFor(weeks, techId).filter((week) => week.weekStart.startsWith(month));
+}
+
+export function monthBilledHours(weeks: WeekLog[], techId: string, month = monthKey()) {
+  const entered = monthWeeks(weeks, techId, month).filter((week) => week.billedHours != null);
   if (entered.length === 0) return null;
   const sum = entered.reduce((total, week) => total + (week.billedHours ?? 0), 0);
   return Math.round(sum * 100) / 100;
 }
 
-export function monthRecsPerVehicle(weeks: WeekLog[], techId: string, now = new Date()) {
-  const entered = monthWeeks(weeks, techId, now).filter((week) => week.recsPerVehicle != null);
+export function monthRecsPerVehicle(weeks: WeekLog[], techId: string, month = monthKey()) {
+  const entered = monthWeeks(weeks, techId, month).filter((week) => week.recsPerVehicle != null);
   if (entered.length === 0) return null;
   const withCars = entered.filter((week) => (week.cars ?? 0) > 0);
   if (withCars.length > 0) {
@@ -592,6 +617,7 @@ export function monthRecsPerVehicle(weeks: WeekLog[], techId: string, now = new 
 }
 
 export function companyPoll(techs: Tech[], weeks: WeekLog[]): PollRow[] {
+  const month = leaderboardMonth(techs, weeks);
   const rows: PollRow[] = techs
     .filter((person) => person.kind === "technician")
     .map((tech) => {
@@ -599,7 +625,7 @@ export function companyPoll(techs: Tech[], weeks: WeekLog[]): PollRow[] {
         tech,
         record: recordOf(weeksFor(weeks, tech.id)),
         rank: null,
-        billed: monthBilledHours(weeks, tech.id),
+        billed: monthBilledHours(weeks, tech.id, month),
       };
     });
   const ranked = rows
