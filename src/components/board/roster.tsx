@@ -136,7 +136,7 @@ export function Roster() {
                         </span>
                       ) : null}
                     </h2>
-                    {tech.kind === "manager" && viewer === "darin" ? (
+                    {tech.kind === "manager" && (viewer === "darin" || viewer === "arun") ? (
                       <ShopLights techs={techs} weeks={weeks} shopId={tech.shopId} />
                     ) : null}
                     <p className="text-sm text-muted">
@@ -206,7 +206,7 @@ const LIGHT_WORD = {
   tech: { red: "Tech reviews waiting on the manager", green: "Tech reviews finished", off: "No tech reviews submitted" },
 } as const;
 
-/** Only shown to Darin: where each shop stands on its reviews. */
+/** Only shown to Darin and Arun: where each shop stands on its reviews. */
 function ShopLights({ techs, weeks, shopId }: { techs: Tech[]; weeks: WeekLog[]; shopId: string }) {
   const lights = shopLights(techs, weeks, shopId);
   const chip = (label: string, kind: "manager" | "tech") => (
