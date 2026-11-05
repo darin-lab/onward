@@ -49,6 +49,7 @@
 
         var root = document.documentElement;
         var classes = ["device-" + type];
+        if (isAndroid) classes.push("is-android");
         if (iosMajor != null) {
           root.dataset.ios = String(iosMajor);
           classes.push(iosMajor >= 27 ? "ios-27-plus" : "ios-below-27");
@@ -59,18 +60,8 @@
   </head>
   <body>
     <div class="page">
-      <header class="powered" aria-label="Powered by Grok">
-        <span class="powered-by">Powered by</span>
-        <span class="powered-brand">
-          <img
-            class="grok-logo"
-            src="/__grok/install/assets/homescreen/logo-grok.svg"
-            width="14"
-            height="14"
-            alt=""
-          />
-          <span class="powered-grok">Grok</span>
-        </span>
+      <header class="brand">
+        <img class="driven-logo" src="/driven-logo.png" alt="Driven Auto Care" />
       </header>
 
       <main class="content">
@@ -133,15 +124,49 @@
         </section>
       </main>
 
+      <main class="content content-android">
+        <section class="copy">
+          <h1>Add {{APP_NAME}} to your&nbsp;Home&nbsp;Screen</h1>
+          <button type="button" class="desktop-open android-install" id="android-install" hidden>
+            Install {{APP_NAME}}
+          </button>
+          <ol class="android-steps">
+            <li><span class="muted">Open this page in</span> Chrome</li>
+            <li><span class="muted">Tap</span> <span class="dots" aria-label="the three-dot menu">&#8942;</span> <span class="muted">in the top-right corner</span></li>
+            <li><span class="muted">Tap</span> Add to Home screen <span class="muted">or</span> Install app</li>
+          </ol>
+          <a class="desktop-open" href="{{APP_URL}}">Open {{APP_NAME}}</a>
+        </section>
+      </main>
+
       <main class="content content-desktop">
         <section class="copy">
-          <h1>Open this link on your iPhone&nbsp;or&nbsp;iPad</h1>
+          <h1>Open this link on your phone</h1>
           <p class="desktop-note">
-            This page shows how to add {{APP_NAME}} to an iOS Home Screen.
+            It shows how to add {{APP_NAME}} to the Home Screen on an iPhone or an Android phone.
           </p>
           <a class="desktop-open" href="{{APP_URL}}">Open {{APP_NAME}}</a>
         </section>
       </main>
     </div>
+    <script>
+      (function () {
+        var button = document.getElementById("android-install");
+        var waiting = null;
+        window.addEventListener("beforeinstallprompt", function (event) {
+          event.preventDefault();
+          waiting = event;
+          if (button) button.hidden = false;
+        });
+        if (button) {
+          button.addEventListener("click", function () {
+            if (!waiting) return;
+            waiting.prompt();
+            waiting = null;
+            button.hidden = true;
+          });
+        }
+      })();
+    </script>
   </body>
 </html>

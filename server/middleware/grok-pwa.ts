@@ -79,6 +79,21 @@ export default async function grokPwaMiddleware(
     });
   }
 
+  // One link for everyone: /install shows iPhone or Android steps for the
+  // phone that opens it.
+  if (path === "/install" && acceptsHtml(event.req.headers.get("accept"))) {
+    const html = renderInstallPageHtml(installPageTemplate, {
+      host: requestHost(event),
+      url: "/",
+    });
+    return new Response(html, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-cache",
+      },
+    });
+  }
+
   if (
     isInstallQuery(urlWithQuery) &&
     isDocumentPath(path) &&

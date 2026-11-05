@@ -373,3 +373,50 @@ html.device-tablet .loc-ipad {
     justify-content: center;
   }
 }
+
+/* Driven branding in place of the builder's "Powered by" line. */
+.brand {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.driven-logo {
+  height: 34px;
+  width: auto;
+  filter: brightness(0) invert(1);
+}
+
+/* Android gets its own steps; the iPhone tutorial is hidden there. */
+.content-android {
+  display: none;
+}
+
+html.is-android .content {
+  display: none;
+}
+
+html.is-android .content-android {
+  display: flex;
+}
+
+.android-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 18px;
+  text-align: left;
+}
+
+.android-steps .dots {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.android-install {
+  background: #e10600;
+  font-size: 17px;
+  padding: 12px 24px;
+}
