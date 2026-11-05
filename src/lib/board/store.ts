@@ -24,6 +24,8 @@ type BoardState = {
   weeks: WeekLog[];
   dayReports: DayReport[];
   calls: PhoneCall[];
+  /** A manager owes Darin or Arun feedback today (Wednesday). From the server. */
+  feedbackDue: boolean;
   cashTransfers: CashTransfer[];
   lens: string;
   viewer: string;
@@ -67,6 +69,7 @@ export const useBoard = create<BoardState>()(
       viewer: "guest",
       viewAs: null,
       calls: [],
+      feedbackDue: false,
       cashTransfers: [],
       boardReady: false,
       setLens: (lens) => set({ lens }),

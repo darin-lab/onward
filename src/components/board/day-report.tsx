@@ -13,7 +13,8 @@ import {
 import { pullShopRange } from "@/lib/board/dashboard.functions";
 import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
-import { refreshCalls, refreshWeeks } from "@/lib/board/shared";
+import { refreshCalls, refreshFeedback, refreshWeeks } from "@/lib/board/shared";
+import { FeedbackPopup, type FeedbackFor } from "@/components/board/feedback";
 import { viewingAs, writable } from "@/lib/board/view-as";
 import { CallReview, pendingCalls } from "@/components/board/phone-call";
 import { Button, Card, fieldClass } from "@/components/board/ui";
@@ -171,6 +172,8 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const techs = useBoard((state) => state.techs);
   const calls = useBoard((state) => state.calls ?? []);
   const weeks = useBoard((state) => state.weeks);
+  const feedbackDue = useBoard((state) => state.feedbackDue);
+  const [feedbackFor, setFeedbackFor] = useState<FeedbackFor | null>(null);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
   const [date, setDate] = useState(todayISO);
@@ -183,6 +186,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     // A call reflection sent while this page was closed has to show up here.
     void refreshCalls().catch(() => undefined);
     void refreshWeeks().catch(() => undefined);
+    void refreshFeedback().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -298,6 +302,29 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             ))}
           </ul>
         </Card>
+      </div>
+    );
+  }
+
+  // On Wednesday a manager sends feedback for Arun or Darin before the report.
+  if (person?.kind === "manager" && feedbackDue) {
+    return (
+      <div>
+        <h1 className="mt-3 text-4xl text-ink">End of Day Report</h1>
+        <p className="mt-2 text-muted">{shop?.name}</p>
+        <Card className="mt-6">
+          <p className="font-display text-2xl text-ink">One more thing first.</p>
+          <p className="mt-2 text-sm text-muted">
+            It's Wednesday. Send feedback for Arun or Darin, then the report opens.
+          </p>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <Button onClick={() => setFeedbackFor("arun")}>Feedback · Arun</Button>
+            <Button onClick={() => setFeedbackFor("darin")}>Feedback · Darin</Button>
+          </div>
+        </Card>
+        {feedbackFor ? (
+          <FeedbackPopup about={feedbackFor} fromName={person.name} onClose={() => setFeedbackFor(null)} />
+        ) : null}
       </div>
     );
   }
@@ -429,6 +456,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               const reason = error instanceof Error ? error.message : "";
               if (viewingAs()) {
                 setProblem("View only. Nothing was sent.");
+                return;
+              }
+              if (reason.includes("feedback")) {
+                setProblem("It's Wednesday. Send feedback for Arun or Darin first.");
+                void refreshFeedback().catch(() => undefined);
                 return;
               }
               if (reason.includes("tech check-in")) {

@@ -1,5 +1,5 @@
 import { listWeeks, loadBoard, saveBoard, saveWeek, type BoardSnapshot } from "@/lib/board/board.functions";
-import { listCalls, listCash } from "@/lib/board/records.functions";
+import { feedbackStatus, listCalls, listCash } from "@/lib/board/records.functions";
 import { isOwnerViewer, type WeekLog } from "@/lib/board/model";
 import { seedCategories, seedShops } from "@/lib/board/seed";
 import { useBoard } from "@/lib/board/store";
@@ -196,6 +196,14 @@ export async function refreshRecords() {
   ]);
   if (calls) useBoard.setState({ calls });
   if (cash) useBoard.setState({ cashTransfers: cash });
+  await refreshFeedback().catch(() => undefined);
+}
+
+/** Whether a manager still owes Wednesday feedback for Darin or Arun. */
+export async function refreshFeedback() {
+  const status = await feedbackStatus();
+  useBoard.setState({ feedbackDue: Boolean(status?.due) });
+  return status;
 }
 
 export async function refreshCalls() {

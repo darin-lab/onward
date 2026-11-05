@@ -35,6 +35,15 @@ function ensureTables(sql: Sql) {
       requested_at text not null,
       updated_at timestamptz not null default now()
     )`);
+    await sql.query(`create table if not exists feedback (
+      id text primary key,
+      about text not null,
+      author_id text not null,
+      week_start text not null,
+      data text not null,
+      created_at timestamptz not null default now(),
+      mailed_at timestamptz
+    )`);
     await sql.query(`create table if not exists day_reports (
       shop_id text not null,
       day text not null,
@@ -203,4 +212,31 @@ export async function owedTechReviews(sql: Sql, shopId: string) {
     const week = (typeof row.data === "string" ? JSON.parse(row.data) : row.data) as { reviewStage?: string };
     return week.reviewStage === "manager";
   }).length;
+}
+
+/** Today in the shops' time zone: the weekday and that week's Monday. */
+export function shopToday(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const weekday = get("weekday");
+  const date = new Date(Date.UTC(Number(get("year")), Number(get("month")) - 1, Number(get("day"))));
+  const back = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(weekday);
+  date.setUTCDate(date.getUTCDate() - Math.max(0, back));
+  return { weekday, wednesday: weekday === "Wed", weekStart: date.toISOString().slice(0, 10) };
+}
+
+/** Has this person sent feedback for Darin or Arun this week (Monday on)? */
+export async function sentFeedbackThisWeek(sql: Sql, personId: string) {
+  const { weekStart } = shopToday();
+  const rows = await sql.query<{ id: string }>(
+    "select id from feedback where author_id = $1 and week_start = $2 limit 1",
+    [personId, weekStart],
+  );
+  return rows.length > 0;
 }

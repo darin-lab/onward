@@ -344,6 +344,12 @@ export const submitDayReport = createServerFn({ method: "POST" })
     if (who.role === "manager" && (await owedTechReviews(sql, data.shopId)) > 0) {
       throw new Error("Finish the tech check-ins waiting on you first");
     }
+    if (who.role === "manager") {
+      const { shopToday, sentFeedbackThisWeek } = await import("@/lib/board/records.server");
+      if (shopToday().wednesday && !(await sentFeedbackThisWeek(sql, who.personId))) {
+        throw new Error("Send feedback for Arun or Darin first");
+      }
+    }
     const report: DayReport = { ...data, submitted: true };
     await insertDayReport(sql, report, true);
     const people = await boardPeople(sql);
@@ -363,3 +369,87 @@ export const submitDayReport = createServerFn({ method: "POST" })
     }
     return { ok: true as const, mailed };
   });
+
+/* ---------------- Feedback for Darin and Arun ---------------- */
+
+const FEEDBACK_ABOUT = {
+  darin: { name: "Darin Dinis", first: "Darin" },
+  arun: { name: "Arun", first: "Arun" },
+} as const;
+
+type FeedbackAbout = keyof typeof FEEDBACK_ABOUT;
+
+/** Whether this person owes feedback today (managers, on Wednesday). */
+export const feedbackStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const who = await viewer();
+  if (who.role === "owner") return { sent: false, due: false };
+  const sql = await sqlForRecords();
+  const { shopToday, sentFeedbackThisWeek } = await import("@/lib/board/records.server");
+  await retryFeedbackMail(sql).catch(() => undefined);
+  const sent = await sentFeedbackThisWeek(sql, who.personId);
+  return { sent, due: who.role === "manager" && shopToday().wednesday && !sent };
+});
+
+export const submitFeedback = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { about?: unknown; helped?: unknown; better?: unknown; need?: unknown };
+    if (data.about !== "darin" && data.about !== "arun") throw new Error("Who is this for?");
+    const text = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 4000) : "");
+    const answers = { helped: text(data.helped), better: text(data.better), need: text(data.need) };
+    if (Object.values(answers).some((answer) => answer.length < MIN_NOTE)) {
+      throw new Error("Each answer needs 13 characters");
+    }
+    return { about: data.about as FeedbackAbout, ...answers };
+  })
+  .handler(async ({ data }) => {
+    const who = await viewer();
+    if (who.role === "owner") throw new Error("Not allowed");
+    const sql = await sqlForRecords();
+    const { shopToday } = await import("@/lib/board/records.server");
+    const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await sql.query(
+      `insert into feedback (id, about, author_id, week_start, data) values ($1, $2, $3, $4, $5)`,
+      [
+        id,
+        data.about,
+        who.personId,
+        shopToday().weekStart,
+        JSON.stringify({ helped: data.helped, better: data.better, need: data.need }),
+      ],
+    );
+    const mailed = await mailOneFeedback(sql, id).catch(() => false);
+    return { ok: true as const, mailed };
+  });
+
+async function mailOneFeedback(sql: Awaited<ReturnType<typeof sqlForRecords>>, id: string) {
+  const rows = await sql.query<{ about: string; author_id: string; data: string }>(
+    "select about, author_id, data from feedback where id = $1 and mailed_at is null",
+    [id],
+  );
+  const row = rows[0];
+  if (!row) return true;
+  const { boardPeople } = await import("@/lib/board/records.server");
+  const people = await boardPeople(sql);
+  const author = people.person(row.author_id);
+  const about = FEEDBACK_ABOUT[row.about as FeedbackAbout] ?? { name: row.about, first: row.about };
+  const answers = JSON.parse(row.data) as { helped: string; better: string; need: string };
+  const { sendFeedbackMail } = await import("@/lib/board/mail-feedback.functions");
+  const result = await sendFeedbackMail({
+    aboutName: about.name,
+    aboutFirst: about.first,
+    authorName: author?.name ?? row.author_id,
+    authorRole: author?.kind === "manager" ? "Manager" : "Technician",
+    shopName: people.shopName(author?.shopId ?? ""),
+    ...answers,
+  });
+  if (!result.ok) return false;
+  await sql.query("update feedback set mailed_at = now() where id = $1", [id]);
+  return true;
+}
+
+async function retryFeedbackMail(sql: Awaited<ReturnType<typeof sqlForRecords>>) {
+  const rows = await sql.query<{ id: string }>(
+    "select id from feedback where mailed_at is null order by created_at limit 5",
+  );
+  for (const row of rows) await mailOneFeedback(sql, row.id);
+}
