@@ -389,6 +389,9 @@ export const feedbackStatus = createServerFn({ method: "GET" }).handler(async ()
   const sql = await sqlForRecords();
   const { shopToday, feedbackLeftThisWeek } = await import("@/lib/board/records.server");
   const left = await feedbackLeftThisWeek(sql, who.personId);
+  // Wednesday: if everyone already finished earlier in the week, the first
+  // person to open the app sends the weekly email.
+  if (shopToday().wednesday) await sendFeedbackDigest({ backup: false }).catch(() => undefined);
   return { left, due: who.role === "manager" && shopToday().wednesday && left.length > 0 };
 });
 
@@ -428,9 +431,11 @@ export const submitFeedback = createServerFn({ method: "POST" })
 type FeedbackRow = { id: string; about: string; author_id: string; data: string; created_at: string };
 
 /**
- * One email with every feedback not yet sent, to both Darin and Arun.
- * - backup false: only once every manager has sent feedback for both Darin and
- *   Arun this week (that's right after the last one comes in on Wednesday).
+ * One email with every feedback not yet sent, to both Darin and Arun, only on
+ * Wednesday (shop time).
+ * - backup false: once every manager has sent feedback for both Darin and Arun
+ *   this week. On Wednesday that's right after the last one comes in; if they
+ *   all finished earlier, it goes when the first person opens the app Wednesday.
  * - backup true: the 9 PM Wednesday run sends whatever came in, naming any
  *   manager who didn't send theirs (out that day, no End of Day).
  * Feedback that arrives after the email (a tech on Friday) waits for the next one.
@@ -438,6 +443,7 @@ type FeedbackRow = { id: string; about: string; author_id: string; data: string;
 export async function sendFeedbackDigest({ backup }: { backup: boolean }) {
   const sql = await sqlForRecords();
   const { boardPeople, feedbackLeftThisWeek, shopToday } = await import("@/lib/board/records.server");
+  if (!shopToday().wednesday) return { ok: true as const, sent: false };
   const pending = await sql.query<FeedbackRow>(
     "select id, about, author_id, data, created_at from feedback where mailed_at is null order by created_at",
   );
