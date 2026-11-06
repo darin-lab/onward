@@ -244,6 +244,7 @@ export function ToolsMenu() {
   const manager = person?.kind === "manager" ? person : null;
   const technician = person?.kind === "technician" ? person : null;
   const feedbackDue = useBoard((state) => state.feedbackDue) && Boolean(manager);
+  const feedbackLeft = useBoard((state) => state.feedbackLeft);
   const [feedback, setFeedback] = useState<FeedbackFor | null>(null);
   const queue = manager ? pendingCalls(calls, manager.id) : [];
   const [open, setOpen] = useState(false);
@@ -299,7 +300,9 @@ export function ToolsMenu() {
       {open ? (
         <div className="absolute right-0 z-30 mt-2 w-max max-w-[min(100vw-2.5rem,16rem)] rounded-md bg-surface p-1 shadow-border">
           {feedbackDue ? (
-            <p className="px-2 pt-1 pb-0.5 text-right text-[11px] text-honey">Feedback due today. Pick one.</p>
+            <p className="px-2 pt-1 pb-0.5 text-right text-[11px] text-honey">
+              {feedbackLeft.length > 1 ? "Feedback due today for both." : "One more feedback due today."}
+            </p>
           ) : null}
           {items.map(([id, label]) => (
             <button
@@ -308,7 +311,10 @@ export function ToolsMenu() {
               className={cn(
                 "flex items-center justify-end gap-2 rounded px-2 py-2 text-right font-display text-sm tracking-wide text-ink uppercase italic whitespace-nowrap",
                 (panel === id || (id === "call" && queue.length > 0)) && "text-honey",
-                feedbackDue && (id === "fb-arun" || id === "fb-darin") && "bg-honey text-white",
+                feedbackDue &&
+                  ((id === "fb-arun" && feedbackLeft.includes("arun")) ||
+                    (id === "fb-darin" && feedbackLeft.includes("darin"))) &&
+                  "bg-honey text-white",
               )}
               onClick={() => {
                 setOpen(false);

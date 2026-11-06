@@ -173,6 +173,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const calls = useBoard((state) => state.calls ?? []);
   const weeks = useBoard((state) => state.weeks);
   const feedbackDue = useBoard((state) => state.feedbackDue);
+  const feedbackLeft = useBoard((state) => state.feedbackLeft);
   const [feedbackFor, setFeedbackFor] = useState<FeedbackFor | null>(null);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
@@ -306,7 +307,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     );
   }
 
-  // On Wednesday a manager sends feedback for Arun or Darin before the report.
+  // On Wednesday a manager sends feedback for both Arun and Darin before the report.
   if (person?.kind === "manager" && feedbackDue) {
     return (
       <div>
@@ -315,11 +316,16 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         <Card className="mt-6">
           <p className="font-display text-2xl text-ink">One more thing first.</p>
           <p className="mt-2 text-sm text-muted">
-            It's Wednesday. Send feedback for Arun or Darin, then the report opens.
+            It's Wednesday. Send feedback for {feedbackLeft.length > 1 ? "both Arun and Darin" : "one more"}, then
+            the report opens.
           </p>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Button onClick={() => setFeedbackFor("arun")}>Feedback · Arun</Button>
-            <Button onClick={() => setFeedbackFor("darin")}>Feedback · Darin</Button>
+            {feedbackLeft.includes("arun") ? (
+              <Button onClick={() => setFeedbackFor("arun")}>Feedback · Arun</Button>
+            ) : null}
+            {feedbackLeft.includes("darin") ? (
+              <Button onClick={() => setFeedbackFor("darin")}>Feedback · Darin</Button>
+            ) : null}
           </div>
         </Card>
         {feedbackFor ? (
@@ -459,7 +465,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                 return;
               }
               if (reason.includes("feedback")) {
-                setProblem("It's Wednesday. Send feedback for Arun or Darin first.");
+                setProblem("It's Wednesday. Send feedback for Arun and Darin first.");
                 void refreshFeedback().catch(() => undefined);
                 return;
               }

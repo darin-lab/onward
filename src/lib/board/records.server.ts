@@ -231,12 +231,13 @@ export function shopToday(now = new Date()) {
   return { weekday, wednesday: weekday === "Wed", weekStart: date.toISOString().slice(0, 10) };
 }
 
-/** Has this person sent feedback for Darin or Arun this week (Monday on)? */
-export async function sentFeedbackThisWeek(sql: Sql, personId: string) {
+/** Who this person still owes feedback this week (Monday on): Darin, Arun, or both. */
+export async function feedbackLeftThisWeek(sql: Sql, personId: string) {
   const { weekStart } = shopToday();
-  const rows = await sql.query<{ id: string }>(
-    "select id from feedback where author_id = $1 and week_start = $2 limit 1",
+  const rows = await sql.query<{ about: string }>(
+    "select distinct about from feedback where author_id = $1 and week_start = $2",
     [personId, weekStart],
   );
-  return rows.length > 0;
+  const sent = new Set(rows.map((row) => row.about));
+  return (["arun", "darin"] as const).filter((who) => !sent.has(who));
 }

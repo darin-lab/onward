@@ -199,10 +199,10 @@ export async function refreshRecords() {
   await refreshFeedback().catch(() => undefined);
 }
 
-/** Whether a manager still owes Wednesday feedback for Darin or Arun. */
+/** Whether a manager still owes Wednesday feedback, and for whom. */
 export async function refreshFeedback() {
   const status = await feedbackStatus();
-  useBoard.setState({ feedbackDue: Boolean(status?.due) });
+  useBoard.setState({ feedbackDue: Boolean(status?.due), feedbackLeft: status?.left ?? [] });
   return status;
 }
 

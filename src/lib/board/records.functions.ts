@@ -345,9 +345,9 @@ export const submitDayReport = createServerFn({ method: "POST" })
       throw new Error("Finish the tech check-ins waiting on you first");
     }
     if (who.role === "manager") {
-      const { shopToday, sentFeedbackThisWeek } = await import("@/lib/board/records.server");
-      if (shopToday().wednesday && !(await sentFeedbackThisWeek(sql, who.personId))) {
-        throw new Error("Send feedback for Arun or Darin first");
+      const { shopToday, feedbackLeftThisWeek } = await import("@/lib/board/records.server");
+      if (shopToday().wednesday && (await feedbackLeftThisWeek(sql, who.personId)).length > 0) {
+        throw new Error("Send feedback for Arun and Darin first");
       }
     }
     const report: DayReport = { ...data, submitted: true };
@@ -379,15 +379,18 @@ const FEEDBACK_ABOUT = {
 
 type FeedbackAbout = keyof typeof FEEDBACK_ABOUT;
 
-/** Whether this person owes feedback today (managers, on Wednesday). */
+/**
+ * What this person still owes: managers send feedback for both Arun and Darin
+ * every week, and on Wednesday it is due before End of Day.
+ */
 export const feedbackStatus = createServerFn({ method: "GET" }).handler(async () => {
   const who = await viewer();
-  if (who.role === "owner") return { sent: false, due: false };
+  if (who.role === "owner") return { left: [] as FeedbackAbout[], due: false };
   const sql = await sqlForRecords();
-  const { shopToday, sentFeedbackThisWeek } = await import("@/lib/board/records.server");
+  const { shopToday, feedbackLeftThisWeek } = await import("@/lib/board/records.server");
   await retryFeedbackMail(sql).catch(() => undefined);
-  const sent = await sentFeedbackThisWeek(sql, who.personId);
-  return { sent, due: who.role === "manager" && shopToday().wednesday && !sent };
+  const left = await feedbackLeftThisWeek(sql, who.personId);
+  return { left, due: who.role === "manager" && shopToday().wednesday && left.length > 0 };
 });
 
 export const submitFeedback = createServerFn({ method: "POST" })
