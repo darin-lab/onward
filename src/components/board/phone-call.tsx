@@ -74,6 +74,25 @@ export function CallReview({
   const clip = call.hasAudio || Boolean(call.audio);
   const [text, setText] = useState("");
   const [played, setPlayed] = useState(!clip);
+  const [src, setSrc] = useState("");
+  const [broken, setBroken] = useState(false);
+
+  // Clips saved as mu-law WAV don't play in Chrome or on Android, so turn them
+  // into plain PCM before playing. If a clip still won't play, the manager can
+  // reply anyway, so a bad file never blocks End of Day.
+  useEffect(() => {
+    if (!audio) return;
+    let url = "";
+    try {
+      url = playableUrl(audio);
+    } catch {
+      url = audio;
+    }
+    setSrc(url);
+    return () => {
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    };
+  }, [audio]);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
   const ready = text.trim().length > 0 && played && !sending;
@@ -86,7 +105,10 @@ export function CallReview({
         if (!cancel) setAudio(result.audio);
       })
       .catch(() => {
-        if (!cancel) setProblem("The clip did not load. Close and open this again.");
+        if (cancel) return;
+        setBroken(true);
+        setPlayed(true);
+        setProblem("The clip did not load. You can still send your reply.");
       });
     return () => {
       cancel = true;
@@ -127,14 +149,20 @@ export function CallReview({
                 }}
               />
               <div className="relative">
-                {clip && !audio ? (
+                {clip && !audio && !broken ? (
                   <p className="text-sm">Loading the clip…</p>
-                ) : audio ? (
+                ) : broken ? (
+                  <p className="text-sm">This clip won't play on this device. Write your reply anyway.</p>
+                ) : audio && src ? (
                   <audio
                     controls
-                    src={audio}
+                    src={src}
                     className="w-full"
                     onPlay={() => setPlayed(true)}
+                    onError={() => {
+                      setBroken(true);
+                      setPlayed(true);
+                    }}
                   />
                 ) : (
                   <p className="text-sm">No clip was attached.</p>
@@ -383,7 +411,7 @@ async function lastStretch(file: File) {
     source.connect(offline.destination);
     source.start(0, start);
     const rendered = await offline.startRendering();
-    const wav = encodeMulawWav(rendered);
+    const wav = encodePcm8Wav(rendered);
     const blob = new Blob([wav], { type: "audio/wav" });
     const dataUrl = await readBlob(blob);
     const base = file.name.replace(/\.[^.]+$/, "") || "call";
@@ -401,6 +429,98 @@ function readBlob(blob: Blob) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * 8-bit PCM WAV at 8 kHz: plays in every browser (iPhone, Android, desktop)
+ * and keeps a 4-minute clip under 2 MB.
+ */
+function encodePcm8Wav(buffer: AudioBuffer) {
+  const samples = buffer.getChannelData(0);
+  const dataSize = samples.length;
+  const out = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(out);
+  const write = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  write(36, "data");
+  view.setUint32(40, dataSize, true);
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    view.setUint8(44 + i, Math.round((value + 1) * 127.5));
+  }
+  return out;
+}
+
+/** A data: URL that plays everywhere: mu-law WAV is turned into 16-bit PCM. */
+function playableUrl(dataUrl: string) {
+  const match = /^data:audio\/[\w.+-]*wav[^;,]*;base64,(.+)$/i.exec(dataUrl);
+  if (!match || !match[1]) return dataUrl;
+  const binary = atob(match[1]);
+  if (binary.length < 44 || binary.slice(0, 4) !== "RIFF" || binary.slice(8, 12) !== "WAVE") return dataUrl;
+  const code = binary.charCodeAt(20) | (binary.charCodeAt(21) << 8);
+  if (code !== 7) return dataUrl;
+  const rate =
+    binary.charCodeAt(24) | (binary.charCodeAt(25) << 8) | (binary.charCodeAt(26) << 16) | (binary.charCodeAt(27) << 24);
+  let offset = 12;
+  let start = 44;
+  let size = binary.length - 44;
+  while (offset + 8 <= binary.length) {
+    const id = binary.slice(offset, offset + 4);
+    const length =
+      binary.charCodeAt(offset + 4) |
+      (binary.charCodeAt(offset + 5) << 8) |
+      (binary.charCodeAt(offset + 6) << 16) |
+      (binary.charCodeAt(offset + 7) << 24);
+    if (id === "data") {
+      start = offset + 8;
+      size = Math.min(length, binary.length - start);
+      break;
+    }
+    offset += 8 + length + (length % 2);
+  }
+  const out = new ArrayBuffer(44 + size * 2);
+  const view = new DataView(out);
+  const write = (at: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(at + i, value.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + size * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate || 8000, true);
+  view.setUint32(28, (rate || 8000) * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, size * 2, true);
+  for (let i = 0; i < size; i += 1) {
+    view.setInt16(44 + i * 2, mulawToLinear(binary.charCodeAt(start + i)), true);
+  }
+  return URL.createObjectURL(new Blob([out], { type: "audio/wav" }));
+}
+
+function mulawToLinear(byte: number) {
+  const value = ~byte & 0xff;
+  const sign = value & 0x80;
+  const exponent = (value >> 4) & 0x07;
+  const mantissa = value & 0x0f;
+  const magnitude = (((mantissa << 3) + 0x84) << exponent) - 0x84;
+  return sign ? -magnitude : magnitude;
 }
 
 function encodeMulawWav(buffer: AudioBuffer) {
