@@ -388,7 +388,6 @@ export const feedbackStatus = createServerFn({ method: "GET" }).handler(async ()
   if (who.role === "owner") return { left: [] as FeedbackAbout[], due: false };
   const sql = await sqlForRecords();
   const { shopToday, feedbackLeftThisWeek } = await import("@/lib/board/records.server");
-  await retryFeedbackMail(sql).catch(() => undefined);
   const left = await feedbackLeftThisWeek(sql, who.personId);
   return { left, due: who.role === "manager" && shopToday().wednesday && left.length > 0 };
 });
@@ -420,39 +419,82 @@ export const submitFeedback = createServerFn({ method: "POST" })
         JSON.stringify({ helped: data.helped, better: data.better, need: data.need }),
       ],
     );
-    const mailed = await mailOneFeedback(sql, id).catch(() => false);
-    return { ok: true as const, mailed };
+    // Nothing is emailed one at a time: once the last manager's feedback is in,
+    // everything goes to Darin and Arun in one email.
+    await sendFeedbackDigest({ backup: false }).catch(() => undefined);
+    return { ok: true as const };
   });
 
-async function mailOneFeedback(sql: Awaited<ReturnType<typeof sqlForRecords>>, id: string) {
-  const rows = await sql.query<{ about: string; author_id: string; data: string }>(
-    "select about, author_id, data from feedback where id = $1 and mailed_at is null",
-    [id],
+type FeedbackRow = { id: string; about: string; author_id: string; data: string; created_at: string };
+
+/**
+ * One email with every feedback not yet sent, to both Darin and Arun.
+ * - backup false: only once every manager has sent feedback for both Darin and
+ *   Arun this week (that's right after the last one comes in on Wednesday).
+ * - backup true: the 9 PM Wednesday run sends whatever came in, naming any
+ *   manager who didn't send theirs (out that day, no End of Day).
+ * Feedback that arrives after the email (a tech on Friday) waits for the next one.
+ */
+export async function sendFeedbackDigest({ backup }: { backup: boolean }) {
+  const sql = await sqlForRecords();
+  const { boardPeople, feedbackLeftThisWeek, shopToday } = await import("@/lib/board/records.server");
+  const pending = await sql.query<FeedbackRow>(
+    "select id, about, author_id, data, created_at from feedback where mailed_at is null order by created_at",
   );
-  const row = rows[0];
-  if (!row) return true;
-  const { boardPeople } = await import("@/lib/board/records.server");
+  if (pending.length === 0) return { ok: true as const, sent: false };
+
+  const boardRows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
+  const raw = boardRows[0]?.data;
+  const board = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
+  const managers = ((board.techs ?? []) as { id: string; name: string; kind: string; shopId: string }[]).filter(
+    (person) => person.kind === "manager",
+  );
+  const missing: { name: string; shopId: string; left: FeedbackAbout[] }[] = [];
+  for (const manager of managers) {
+    const left = await feedbackLeftThisWeek(sql, manager.id);
+    if (left.length > 0) missing.push({ name: manager.name, shopId: manager.shopId, left });
+  }
+  if (!backup && missing.length > 0) return { ok: true as const, sent: false };
+
+  // Claim these rows first so two sends at the same moment can't both mail them.
+  const ids = pending.map((row) => row.id);
+  const claimed = await sql.query<{ id: string }>(
+    "update feedback set mailed_at = now() where id = any($1) and mailed_at is null returning id",
+    [ids],
+  );
+  const mine = new Set(claimed.map((row) => row.id));
+  const rows = pending.filter((row) => mine.has(row.id));
+  if (rows.length === 0) return { ok: true as const, sent: false };
+
   const people = await boardPeople(sql);
-  const author = people.person(row.author_id);
-  const about = FEEDBACK_ABOUT[row.about as FeedbackAbout] ?? { name: row.about, first: row.about };
-  const answers = JSON.parse(row.data) as { helped: string; better: string; need: string };
-  const { sendFeedbackMail } = await import("@/lib/board/mail-feedback.functions");
-  const result = await sendFeedbackMail({
-    aboutName: about.name,
-    aboutFirst: about.first,
-    authorName: author?.name ?? row.author_id,
-    authorRole: author?.kind === "manager" ? "Manager" : "Technician",
-    shopName: people.shopName(author?.shopId ?? ""),
-    ...answers,
+  const items = rows.map((row) => {
+    const author = people.person(row.author_id);
+    const answers = JSON.parse(row.data) as { helped: string; better: string; need: string };
+    return {
+      about: row.about as FeedbackAbout,
+      authorName: author?.name ?? row.author_id,
+      authorRole: author?.kind === "manager" ? "Manager" : "Technician",
+      shopName: people.shopName(author?.shopId ?? ""),
+      at: row.created_at,
+      ...answers,
+    };
   });
-  if (!result.ok) return false;
-  await sql.query("update feedback set mailed_at = now() where id = $1", [id]);
-  return true;
-}
-
-async function retryFeedbackMail(sql: Awaited<ReturnType<typeof sqlForRecords>>) {
-  const rows = await sql.query<{ id: string }>(
-    "select id from feedback where mailed_at is null order by created_at limit 5",
-  );
-  for (const row of rows) await mailOneFeedback(sql, row.id);
+  const { sendFeedbackDigestMail } = await import("@/lib/board/mail-feedback.functions");
+  try {
+    const result = await sendFeedbackDigestMail({
+      weekStart: shopToday().weekStart,
+      items,
+      missing: missing.map((person) => ({
+        name: person.name,
+        shopName: people.shopName(person.shopId),
+        left: person.left.map((who) => FEEDBACK_ABOUT[who].first),
+      })),
+    });
+    if (!result.ok) throw new Error(result.reason);
+  } catch (error) {
+    // Put them back so the next try includes them.
+    await sql.query("update feedback set mailed_at = null where id = any($1)", [[...mine]]);
+    return { ok: false as const, sent: false, reason: error instanceof Error ? error.message : "mail failed" };
+  }
+  return { ok: true as const, sent: true, count: rows.length };
 }

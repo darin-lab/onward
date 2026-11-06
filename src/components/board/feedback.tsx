@@ -58,11 +58,13 @@ export function FeedbackPopup({
           </button>
         </div>
         {sent ? (
-          <p className="mt-6 mb-4 text-center text-ink">Sent. Thanks for the feedback.</p>
+          <p className="mt-6 mb-4 text-center text-ink">
+            Sent. Thanks for the feedback. Darin and Arun get everyone's together in one email.
+          </p>
         ) : (
           <>
             <p className="mt-1 text-sm text-muted">
-              From {fromName}. Goes to Darin and Arun.
+              From {fromName}. Darin and Arun both read it.
             </p>
             {question(`What did ${first} do this week that helped you?`, helped, setHelped)}
             {question(`What could ${first} do better?`, better, setBetter)}
@@ -77,9 +79,8 @@ export function FeedbackPopup({
                 void writable(() =>
                   submitFeedback({ data: { about, helped, better, need } }),
                 )
-                  .then((result) => {
+                  .then(() => {
                     setSent(true);
-                    if (!result.mailed) setProblem("Saved. The email will go out shortly.");
                     return refreshFeedback().catch(() => undefined);
                   })
                   .catch(() =>
