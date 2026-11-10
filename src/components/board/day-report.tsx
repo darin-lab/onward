@@ -144,6 +144,22 @@ const ABOUT: Partial<Record<DayFieldKey, string>> = {
   elr: "ELR (Effective Labor Rate): am I making enough dollars per billed hour to ensure strong sales and gross profit?",
   hpro: "HPRO (Hours Per Repair Order): am I identifying additional recommendations on every car and selling them?",
   spbh: "SPBH (Sales Per Billed Hour): am I adding in parts and sublets that add value to our customers and ensure strong sales and gross profit?",
+  productivity:
+    "Work hours ÷ available hours. How much of the techs' available time was spent working on cars. Goal: 85–90%.",
+  efficiency:
+    "Billed hours ÷ service hours. How the hours we billed compare with the time spent doing the work. Over 100% means the work got done faster than it was billed. Goal: 100–150%.",
+  proficiency:
+    "Billed hours ÷ available hours. How many billed hours we got out of the techs' available time. It's productivity and efficiency together. Goal: 100%.",
+  hoursPerDay: "Billed hours for the day. Goal: 20.",
+  billedHours: "Labor hours charged to customers today, from the dashboard.",
+  workHours: "Hours the techs spent working on cars today. Entered by the manager.",
+  serviceHours: "Hours the techs spent on the jobs that were billed today. Entered by the manager.",
+  availableHours: "Hours the techs were on the clock and available to work today. Entered by the manager.",
+  laborSales: "The labor part of today's sales, not counting parts.",
+  totalSales: "Everything sold today, parts and labor.",
+  carCount: "Repair orders closed today.",
+  creditCardPayments: "Card payments taken today.",
+  cashCheckPayments: "Cash and check payments taken today.",
 };
 
 function AboutTip({ id, label, text }: { id: string; label: string; text: string }) {
