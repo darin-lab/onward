@@ -146,20 +146,68 @@ function pacificMonth(now = new Date()) {
   return { start, end };
 }
 
-export const pullMonthSales = createServerFn({ method: "GET" }).handler(async () => {
-  const { start, end } = pacificMonth();
-  try {
-    const rows = await rangeRows(start, end);
-    const sales: Record<string, number> = {};
-    const cars: Record<string, number> = {};
-    for (const [shopId, name] of Object.entries(SHOP_NAMES)) {
-      const value = valueOf(rows, "sales", name);
-      if (value != null) sales[shopId] = round(value);
-      const count = valueOf(rows, "cars", name);
-      if (count != null) cars[shopId] = round(count, 0);
+type MonthSales = { start: string; end: string; sales: Record<string, number>; cars: Record<string, number> };
+
+async function cacheSql() {
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  await sql.query(
+    `create table if not exists dashboard_cache (
+      id text primary key,
+      data text not null,
+      updated_at timestamptz not null default now()
+    )`,
+  );
+  return sql;
+}
+
+/**
+ * This month's sales and car count per shop.
+ * { cached: true } answers at once with the last saved copy (or nothing);
+ * otherwise it asks the dashboard (a few seconds) and saves what it got.
+ */
+export const pullMonthSales = createServerFn({ method: "GET" })
+  .validator((input: unknown) => ({ cached: Boolean((input as { cached?: unknown } | undefined)?.cached) }))
+  .handler(async ({ data }) => {
+    const { start, end } = pacificMonth();
+    const id = `month:${start}`;
+    if (data.cached) {
+      try {
+        const sql = await cacheSql();
+        const rows = await sql.query<{ data: string; updated_at: string }>(
+          "select data, updated_at from dashboard_cache where id = $1",
+          [id],
+        );
+        if (!rows[0]) return { ok: false as const, start, end, sales: {}, cars: {} };
+        const saved = JSON.parse(rows[0].data) as MonthSales;
+        return { ok: true as const, ...saved, start, end, savedAt: String(rows[0].updated_at) };
+      } catch {
+        return { ok: false as const, start, end, sales: {}, cars: {} };
+      }
     }
-    return { ok: true as const, start, end, sales, cars };
-  } catch {
-    return { ok: false as const, start, end, sales: {}, cars: {} };
-  }
-});
+    try {
+      const rows = await rangeRows(start, end);
+      const sales: Record<string, number> = {};
+      const cars: Record<string, number> = {};
+      for (const [shopId, name] of Object.entries(SHOP_NAMES)) {
+        const value = valueOf(rows, "sales", name);
+        if (value != null) sales[shopId] = round(value);
+        const count = valueOf(rows, "cars", name);
+        if (count != null) cars[shopId] = round(count, 0);
+      }
+      const fresh: MonthSales = { start, end, sales, cars };
+      try {
+        const sql = await cacheSql();
+        await sql.query(
+          `insert into dashboard_cache (id, data, updated_at) values ($1, $2, now())
+           on conflict (id) do update set data = excluded.data, updated_at = now()`,
+          [id, JSON.stringify(fresh)],
+        );
+      } catch {
+        // The page still gets the fresh numbers; the copy is only a head start.
+      }
+      return { ok: true as const, ...fresh };
+    } catch {
+      return { ok: false as const, start, end, sales: {}, cars: {} };
+    }
+  });

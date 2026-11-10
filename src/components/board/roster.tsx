@@ -47,19 +47,9 @@ export function Roster() {
   const shop = shops.find((item) => item.id === lens);
   const manager = techs.find((person) => person.shopId === lens && person.kind === "manager");
   const looking = techs.find((person) => person.id === viewer);
-  const [monthCars, setMonthCars] = useState<Record<string, number>>({});
-  const [monthSales, setMonthSales] = useState<Record<string, number>>({});
-  useEffect(() => {
-    let cancel = false;
-    void loadMonthSales().then((result) => {
-      if (cancel) return;
-      setMonthCars(result.cars);
-      setMonthSales(result.sales);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, []);
+  const month = useMonthSales();
+  const monthCars = month?.cars ?? {};
+  const monthSales = month?.sales ?? {};
   if (looking?.kind === "technician") {
     return <Navigate to="/t/$techId" params={{ techId: looking.id }} />;
   }
@@ -472,29 +462,73 @@ function Toolbox() {
   );
 }
 
-let monthSalesRequest: Promise<{ sales: Record<string, number>; cars: Record<string, number> }> | null =
-  null;
+type MonthNumbers = { month: string; sales: Record<string, number>; cars: Record<string, number> };
 
-function loadMonthSales() {
-  if (!monthSalesRequest) {
-    monthSalesRequest = pullMonthSales()
-      .then((result) => (result.ok ? { sales: result.sales, cars: result.cars } : { sales: {}, cars: {} }))
-      .catch(() => ({ sales: {}, cars: {} }));
+const MONTH_STORE = "onward-month-sales";
+let monthNumbers: MonthNumbers | null = null;
+let monthStarted = false;
+let monthFresh = false;
+const monthListeners = new Set<() => void>();
+
+function thisMonth() {
+  return format(new Date(), "yyyy-MM");
+}
+
+function keepMonth(next: MonthNumbers) {
+  if (next.month !== thisMonth()) return;
+  monthNumbers = next;
+  try {
+    window.localStorage.setItem(MONTH_STORE, JSON.stringify(next));
+  } catch {
+    // Storage can be off; the numbers still show.
   }
-  return monthSalesRequest;
+  for (const listener of monthListeners) listener();
+}
+
+/**
+ * Month sales show at once: this device's last copy first, else the server's
+ * last copy, then the dashboard's fresh numbers replace them when they land.
+ */
+function startMonthSales() {
+  if (monthStarted) return;
+  monthStarted = true;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(MONTH_STORE) ?? "null") as MonthNumbers | null;
+    if (saved && saved.month === thisMonth() && saved.sales) monthNumbers = saved;
+  } catch {
+    // No saved copy.
+  }
+  if (!monthNumbers) {
+    void pullMonthSales({ data: { cached: true } })
+      .then((result) => {
+        if (result.ok && !monthFresh) keepMonth({ month: result.start.slice(0, 7), sales: result.sales, cars: result.cars });
+      })
+      .catch(() => undefined);
+  }
+  void pullMonthSales({ data: { cached: false } })
+    .then((result) => {
+      if (!result.ok) return;
+      monthFresh = true;
+      keepMonth({ month: result.start.slice(0, 7), sales: result.sales, cars: result.cars });
+    })
+    .catch(() => undefined);
+}
+
+function useMonthSales() {
+  startMonthSales();
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const listener = () => bump((n) => n + 1);
+    monthListeners.add(listener);
+    return () => {
+      monthListeners.delete(listener);
+    };
+  }, []);
+  return monthNumbers;
 }
 
 function MonthSales({ shopId }: { shopId: string }) {
-  const [total, setTotal] = useState<number | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    void loadMonthSales().then((result) => {
-      if (!cancel) setTotal(result.sales[shopId] ?? null);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [shopId]);
+  const total = useMonthSales()?.sales[shopId] ?? null;
   return (
     <p className="min-h-12 text-center text-sm text-ink">
       <span className="block text-muted">{format(new Date(), "MMMM")} Sales</span>
