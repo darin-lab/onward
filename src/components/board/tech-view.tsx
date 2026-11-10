@@ -1725,7 +1725,7 @@ function LeadWriter({
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
               <div className="w-full max-w-sm rounded-md bg-surface px-6 py-6 text-center shadow-border">
                 <p className="font-display text-2xl tracking-wide text-ink italic">
-                  you for reals right now?
+                  Are YOU sure?
                 </p>
                 <div className="mt-6 grid gap-3">
                   <button
@@ -1743,14 +1743,14 @@ function LeadWriter({
                       });
                     }}
                   >
-                    i am for reals
+                    Yes
                   </button>
                   <button
                     type="button"
                     className="min-h-11 font-display text-sm tracking-wide text-muted uppercase italic"
                     onClick={() => setConfirming(false)}
                   >
-                    nope
+                    No
                   </button>
                 </div>
               </div>
