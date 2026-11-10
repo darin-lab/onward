@@ -486,9 +486,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                   )}
                 </div>
                 {isWeekly(field.key) ? (
-                  <p className="mt-0.5 flex justify-end gap-1.5 pr-2 text-xs tabular-nums text-muted">
-                    <span>Week to date</span>
-                    <span style={{ color: wtdTone }}>{wtd || "—"}</span>
+                  <p className="mt-0.5 flex items-baseline justify-end gap-2 pr-2 tabular-nums">
+                    <span className="text-xs text-muted">Week to date</span>
+                    <span className="text-base font-semibold" style={{ color: wtdTone }}>
+                      {wtd || "—"}
+                    </span>
                   </p>
                 ) : null}
                 {ask ? (
