@@ -208,7 +208,7 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
 
 export async function buildPresence(sql: Sql): Promise<ChatPresence> {
   const rows = await sql.query<{ person_id: string; status: string; fresh: boolean }>(
-    `select person_id, status, (last_seen > now() - interval '90 seconds') as fresh from chat_presence`,
+    `select person_id, status, (last_seen > now() - interval '3 minutes') as fresh from chat_presence`,
   );
   const out: ChatPresence = {};
   for (const row of rows) {
