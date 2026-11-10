@@ -513,7 +513,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
           />
         </div>
         <ul className="mt-2 divide-y divide-line">
-            <li className="flex items-center justify-end gap-3 py-1.5">
+            <li className="hidden items-center justify-end gap-3 py-1.5 sm:flex">
               <span className="w-28 text-right text-xs text-muted">Goal</span>
               <span className="w-36 text-right text-xs leading-snug text-muted">
                 {best ? `Best Month - ${best.label} (daily avg)` : ""}
@@ -531,8 +531,15 @@ export function DayReportForm({ shopId }: { shopId: string }) {
               GOALS[field.key] && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
             return (
               <li key={field.key} className="py-1.5">
-                <div className="flex items-center gap-3">
-                  <span className="flex min-w-0 flex-1 items-center">
+                {/* Phone: name on top, then Goal / Best month / Today side by side with small captions.
+                    Wider screens: one line, under the column headings. */}
+                <div
+                  className={cn(
+                    "grid gap-x-3 gap-y-0.5 sm:flex sm:items-center",
+                    best ? "grid-cols-3" : "grid-cols-2",
+                  )}
+                >
+                  <span className={cn("flex min-w-0 items-center sm:flex-1", best ? "col-span-3" : "col-span-2")}>
                     <label className="min-w-0 text-sm text-ink" htmlFor={field.key}>
                       {field.label}
                     </label>
@@ -540,12 +547,24 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                       <AboutTip id={`about-${field.key}`} label={field.label} text={ABOUT[field.key] ?? ""} />
                     ) : null}
                   </span>
-                  <span className="w-28 shrink-0 text-right text-xs whitespace-nowrap text-muted">
-                    {GOALS[field.key]?.label ?? ""}
+                  <span className="flex flex-col text-xs whitespace-nowrap text-muted sm:w-28 sm:shrink-0 sm:text-right">
+                    <span className="text-[10px] tracking-wide uppercase sm:hidden">Goal</span>
+                    {GOALS[field.key]?.label ?? (
+                      <span className="sm:hidden" aria-hidden="true">
+                        —
+                      </span>
+                    )}
                   </span>
-                  <span className="w-36 shrink-0 text-right text-sm tabular-nums text-muted">
-                    {best?.values[field.key] ?? ""}
-                  </span>
+                  {best ? (
+                    <span className="flex flex-col text-sm tabular-nums text-muted sm:w-36 sm:shrink-0 sm:text-right">
+                      <span className="text-[10px] tracking-wide uppercase sm:hidden">Best · {best.label}</span>
+                      {best.values[field.key] ?? ""}
+                    </span>
+                  ) : (
+                    <span className="hidden sm:block sm:w-36 sm:shrink-0" />
+                  )}
+                  <span className="flex flex-col items-end sm:contents">
+                    <span className="text-[10px] tracking-wide text-muted uppercase sm:hidden">Today</span>
                   {entered ? (
                     <input
                       id={field.key}
@@ -554,17 +573,18 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                       onChange={(event) =>
                         setDraft((current) => ({ ...current, [field.key]: event.target.value }))
                       }
-                      className={cn(fieldClass, "min-h-9 w-28 shrink-0 px-2 text-right tabular-nums")}
+                      className={cn(fieldClass, "min-h-9 w-24 shrink-0 px-2 text-right tabular-nums sm:w-28")}
                       style={{ color: tone }}
                     />
                   ) : (
                     <span
-                      className="flex min-h-9 w-28 shrink-0 items-center justify-end px-2 text-right text-sm tabular-nums text-ink"
+                      className="flex min-h-9 shrink-0 items-center justify-end text-right text-sm tabular-nums text-ink sm:w-28 sm:px-2"
                       style={{ color: tone }}
                     >
                       {value || "—"}
                     </span>
                   )}
+                  </span>
                 </div>
                 {isWeekly(field.key) ? (
                   <p className="mt-0.5 flex items-baseline justify-end gap-2 pr-2 tabular-nums">
