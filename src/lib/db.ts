@@ -1,14 +1,14 @@
-import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { databaseUrlFor, pendingMigrations } from "../../scripts/migration-plan.mjs";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+// On a Vercel preview this reads PREVIEW_DATABASE_URL instead, so a preview can
+// never open the live database (see databaseUrlFor).
 const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+  typeof process !== "undefined" ? databaseUrlFor(process.env) : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured

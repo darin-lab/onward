@@ -16,15 +16,22 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
-import { pendingMigrations } from "./migration-plan.mjs";
+import { databaseUrlFor, isPreviewEnv, pendingMigrations } from "./migration-plan.mjs";
 
-const databaseUrl = process.env.DATABASE_URL;
+// A preview build uses PREVIEW_DATABASE_URL (a separate Neon branch), never the
+// live DATABASE_URL. See databaseUrlFor in migration-plan.mjs.
+const databaseUrl = databaseUrlFor(process.env);
 if (!databaseUrl) {
   console.log(
-    "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
+    isPreviewEnv(process.env)
+      ? "[migrate] preview build and PREVIEW_DATABASE_URL not set — skipping, so the live database is untouched (previews use PGLite)."
+      : "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
   );
   process.exit(0);
 }
+console.log(
+  `[migrate] target: ${isPreviewEnv(process.env) ? "PREVIEW_DATABASE_URL (preview branch)" : "DATABASE_URL"} (VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"})`,
+);
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 

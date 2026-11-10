@@ -88,3 +88,20 @@ test("the copy check reads both files and catches an edit", () => {
   const drifted = authSchemaCopy(root);
   assert.notEqual(drifted.copy, drifted.source);
 });
+
+test("a preview never gets the live DATABASE_URL", async () => {
+  const { databaseUrlFor, isPreviewEnv } = await import("./migration-plan.mjs");
+  const live = { DATABASE_URL: "postgres://live" };
+  assert.equal(databaseUrlFor(live), "postgres://live");
+  assert.equal(databaseUrlFor({ ...live, VERCEL_ENV: "production" }), "postgres://live");
+  assert.equal(databaseUrlFor({ ...live, VERCEL_ENV: "preview" }), undefined);
+  assert.equal(databaseUrlFor({ ...live, VERCEL_TARGET_ENV: "preview" }), undefined);
+  assert.equal(
+    databaseUrlFor({ ...live, VERCEL_ENV: "preview", PREVIEW_DATABASE_URL: " postgres://branch " }),
+    "postgres://branch",
+  );
+  assert.equal(databaseUrlFor({ PREVIEW_DATABASE_URL: "postgres://branch" }), undefined);
+  assert.equal(databaseUrlFor({ DATABASE_URL: "  " }), undefined);
+  assert.equal(isPreviewEnv({ VERCEL_ENV: "preview" }), true);
+  assert.equal(isPreviewEnv({ VERCEL_ENV: "production" }), false);
+});

@@ -30,6 +30,32 @@ export function isMigrationFile(path) {
 }
 
 /**
+ * Whether this process is a Vercel PREVIEW deployment (a branch build), as
+ * opposed to production, local dev, or anything else.
+ * @param {Record<string, string | undefined>} env
+ * @returns {boolean}
+ */
+export function isPreviewEnv(env) {
+  return env.VERCEL_ENV === "preview" || env.VERCEL_TARGET_ENV === "preview";
+}
+
+/**
+ * The database URL this process may use, or undefined for "use PGLite".
+ *
+ * The project-wide DATABASE_URL is the LIVE database and Vercel sets it for
+ * Preview as well as Production. A preview build must never use it (it would
+ * run migrations against live data), so a preview reads PREVIEW_DATABASE_URL
+ * only, which points at a separate Neon branch. Without that variable a
+ * preview falls back to PGLite and cannot touch production data.
+ * @param {Record<string, string | undefined>} env
+ * @returns {string | undefined}
+ */
+export function databaseUrlFor(env) {
+  const raw = isPreviewEnv(env) ? env.PREVIEW_DATABASE_URL : env.DATABASE_URL;
+  return raw && raw.trim() ? raw.trim() : undefined;
+}
+
+/**
  * Migrations in `paths` that are not yet in `applied`, in apply order.
  * Non-`.sql` entries (a `readdir` also yields `migrations/auth/`) are dropped.
  * @param {Iterable<string>} paths
