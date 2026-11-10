@@ -132,7 +132,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   );
   const group = (label: string, body: React.ReactNode) => (
     <section className="py-2">
-      <p className="px-3 pb-1 text-[11px] uppercase tracking-widest text-muted">{label}</p>
+      <p className="px-3 pb-1 text-left text-[11px] font-bold uppercase tracking-widest text-ink">{label}</p>
       {body}
     </section>
   );
@@ -141,13 +141,18 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
       className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-raised">
       <Avatar person={p} size={28} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-ink">{p.name}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm text-ink">{p.name}</span>
+          <Dot id={p.id} />
+        </span>
         <span className="block truncate text-[11px] text-muted">
           {presence[p.id]?.state === "away" && presence[p.id]?.away ? presence[p.id].away : p.title}
         </span>
       </span>
-      <Dot id={p.id} />
     </button>
+  );
+  const folder = (label: string, list: ChatPerson[]) => (
+    <PeopleFolder key={label} label={label} list={sorted(list)} render={personRow} />
   );
   return (
     <>
@@ -179,8 +184,8 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         {group("Channels", channels.map((r) => roomRow(r, "# ")))}
         {groups.length ? group("Group chats", groups.map((r) => roomRow(r))) : null}
         {dms.length ? group("Recent direct messages", dms.map((r) => roomRow(r))) : null}
-        {group("Owners", sorted(owners).map(personRow))}
-        {shops.map(([shop, list]) => group(shop, sorted(list).map(personRow)))}
+        {folder("Management", owners)}
+        {shops.map(([shop, list]) => folder(shop, list))}
         {owner && others.length ? group("All conversations (read-only)", others.map((r) => roomRow(r)))
         : null}
       </div>
@@ -188,6 +193,23 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         Messages are company records and may be reviewed by Darin and Arun.
       </p>
     </>
+  );
+}
+
+function PeopleFolder({ label, list, render }: { label: string; list: ChatPerson[]; render: (p: ChatPerson) => React.ReactNode }) {
+  const presence = useChat((s) => s.presence);
+  const [open, setOpen] = useState(true);
+  const online = list.filter((p) => (presence[p.id]?.state ?? "offline") !== "offline").length;
+  return (
+    <section className="py-1">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-raised">
+        <span className="w-3 text-[10px] text-muted">{open ? "▼" : "▶"}</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-ink">{label}</span>
+        <span className="text-[11px] text-muted">({online}/{list.length})</span>
+      </button>
+      {open ? list.map(render) : null}
+    </section>
   );
 }
 
