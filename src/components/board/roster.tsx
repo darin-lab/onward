@@ -19,7 +19,7 @@ import {
   type Tech,
   type WeekLog,
 } from "@/lib/board/model";
-import { pinAssignments, setPersonPin } from "@/lib/board/pin.functions";
+import { pinAssignments, randomPersonPin, setPersonPin } from "@/lib/board/pin.functions";
 import { pullMonthSales } from "@/lib/board/dashboard.functions";
 import { useBoard } from "@/lib/board/store";
 import { CompanyPoll } from "@/components/board/poll";
@@ -546,7 +546,7 @@ function PinList() {
       <p className="text-sm text-muted">PINs</p>
       {people.map((person) => (
         <PinRow
-          key={person.id}
+          key={`${person.id}:${pins[person.id] ?? ""}`}
           personId={person.id}
           name={person.name}
           currentPin={pins[person.id] ?? ""}
@@ -640,6 +640,21 @@ function PinRow({
       />
       <Button type="submit" tone="quiet" disabled={pin.length !== 4 || pin === currentPin}>
         Save
+      </Button>
+      <Button
+        tone="quiet"
+        onClick={() => {
+          if (currentPin && !window.confirm(`Give ${name} a new PIN? The old one stops working.`)) return;
+          void randomPersonPin({ data: { personId } }).then((result) => {
+            if (!result.ok) {
+              onFailed(result.reason);
+              return;
+            }
+            onSaved(result.pin);
+          });
+        }}
+      >
+        New PIN
       </Button>
     </form>
   );

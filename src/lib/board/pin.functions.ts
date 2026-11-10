@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 const assignedPins: Record<string, string> = {
   darin: "0585",
@@ -195,4 +195,44 @@ export const setPersonPin = createServerFn({ method: "POST" })
       [data.personId, hash, data.pin],
     );
     return { ok: true as const };
+  });
+
+/**
+ * Owners only: gives someone a random 4-digit PIN nobody else has, saves it,
+ * and returns it so Darin or Arun can pass it on. Nobody has to type one.
+ */
+export const randomPersonPin = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const personId = (input as { personId?: unknown })?.personId;
+    if (typeof personId !== "string" || !personId) throw new Error("Pick a person");
+    return { personId };
+  })
+  .handler(async ({ data }) => {
+    const session = await readSession();
+    if (session?.role !== "owner") return { ok: false as const, reason: "Sign in as an owner first." };
+    if (!owners.has(data.personId)) {
+      const person = await describe(data.personId);
+      if (!person) return { ok: false as const, reason: "That person is not on the board." };
+    }
+    const key = await secret();
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql.query<{ person_id: string; pin_hash: string }>("select person_id, pin_hash from staff_pins");
+    const used = new Set(rows.filter((row) => row.person_id !== data.personId).map((row) => row.pin_hash));
+    const ownerPin = process.env.OWNER_PIN?.trim();
+    for (let tries = 0; tries < 500; tries += 1) {
+      const pin = String(randomInt(0, 10000)).padStart(4, "0");
+      // Skip easy guesses like 1111 or 1234.
+      if (new Set(pin).size < 3 || "0123456789".includes(pin) || "9876543210".includes(pin)) continue;
+      if (pin === ownerPin) continue;
+      const hash = digest(key, pin);
+      if (used.has(hash)) continue;
+      await sql.query(
+        `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
+         on conflict (person_id) do update set pin_hash = excluded.pin_hash, pin_text = excluded.pin_text`,
+        [data.personId, hash, pin],
+      );
+      return { ok: true as const, pin };
+    }
+    return { ok: false as const, reason: "Could not find a free PIN. Try again." };
   });
