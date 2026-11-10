@@ -129,3 +129,29 @@
     animation: none;
   }
 }
+
+/* Sales rank on the shop cards: shiny gold, silver and bronze. */
+.metal {
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: metal-shine 3.2s ease-in-out infinite;
+}
+.metal-gold {
+  background-image: linear-gradient(110deg, #8a6212 0%, #f7d774 22%, #fff6c9 38%, #e2b33c 55%, #a8770f 75%, #f3cf62 100%);
+}
+.metal-silver {
+  background-image: linear-gradient(110deg, #6f7378 0%, #d9dde2 22%, #ffffff 38%, #b9bfc6 55%, #7c8188 75%, #e6e9ec 100%);
+}
+.metal-bronze {
+  background-image: linear-gradient(110deg, #6b3a17 0%, #d9925a 22%, #ffd2a8 38%, #c0773d 55%, #7a4219 75%, #e2a06a 100%);
+}
+@keyframes metal-shine {
+  0% { background-position: 100% 0; }
+  50% { background-position: 0% 0; }
+  100% { background-position: 100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .metal { animation: none; }
+}

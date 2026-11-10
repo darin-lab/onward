@@ -48,10 +48,13 @@ export function Roster() {
   const manager = techs.find((person) => person.shopId === lens && person.kind === "manager");
   const looking = techs.find((person) => person.id === viewer);
   const [monthCars, setMonthCars] = useState<Record<string, number>>({});
+  const [monthSales, setMonthSales] = useState<Record<string, number>>({});
   useEffect(() => {
     let cancel = false;
     void loadMonthSales().then((result) => {
-      if (!cancel) setMonthCars(result.cars);
+      if (cancel) return;
+      setMonthCars(result.cars);
+      setMonthSales(result.sales);
     });
     return () => {
       cancel = true;
@@ -62,10 +65,19 @@ export function Roster() {
   }
 
   const shopOrder = ["fremont", "campbell", "san-ramon", "san-jose", "castro-valley"];
+  // Shops with sales this month rank 1-5 by sales; the rest keep the usual order after them.
+  const salesRank = new Map(
+    Object.entries(monthSales)
+      .filter(([, total]) => total > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([shopId], index) => [shopId, index + 1]),
+  );
   const ordered =
     lens === "owner"
       ? [...visible].sort(
-          (a, b) => shopOrder.indexOf(a.shopId) - shopOrder.indexOf(b.shopId),
+          (a, b) =>
+            (salesRank.get(a.shopId) ?? 99) - (salesRank.get(b.shopId) ?? 99) ||
+            shopOrder.indexOf(a.shopId) - shopOrder.indexOf(b.shopId),
         )
       : visible;
 
@@ -128,6 +140,10 @@ export function Roster() {
                   className="block"
                 >
                 <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                  {tech.kind === "manager" && salesRank.has(tech.shopId) ? (
+                    <SalesRank rank={salesRank.get(tech.shopId) ?? 0} />
+                  ) : null}
                   <div className="min-w-0">
                     <h2 className="text-2xl text-ink">
                       {tech.kind === "manager" ? home?.name : tech.name}
@@ -145,6 +161,7 @@ export function Roster() {
                     <p className="text-sm text-muted">
                       {tech.kind === "manager" ? streetOnly(home?.address ?? "") : home?.name}
                     </p>
+                  </div>
                   </div>
                   <div className="text-right">
                     <p className="font-display text-2xl leading-none font-semibold whitespace-nowrap tabular-nums">
@@ -731,6 +748,22 @@ function EndOfDayButton({ shopId }: { shopId: string }) {
           {END_OF_DAY_WAIT}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/** The shop's place in this month's sales: gold, silver and bronze for the top three. */
+function SalesRank({ rank }: { rank: number }) {
+  const metal = rank === 1 ? "metal-gold" : rank === 2 ? "metal-silver" : rank === 3 ? "metal-bronze" : "";
+  return (
+    <span
+      aria-label={`Number ${rank} in sales this month`}
+      className={cn(
+        "shrink-0 pr-1 font-display text-[32px] leading-none font-semibold italic tabular-nums",
+        metal ? cn("metal", metal) : "text-ink",
+      )}
+    >
+      #{rank}
     </span>
   );
 }
