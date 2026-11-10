@@ -1,49 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
-const assignedPins: Record<string, string> = {
-  darin: "0585",
-  arun: "2957",
-  jon: "6148",
-  david: "3702",
-  israel: "8294",
-  dillon: "1563",
-  kevin: "7430",
-  antonio: "5081",
-  tim: "9264",
-  jim: "3619",
-  francisco: "1847",
-  nathan: "6520",
-  jeremiah: "4073",
-  edgar: "8901",
-  duy: "5186",
-  duc: "6392",
-};
-
-async function ensureAssignedPins() {
-  const key = await secret();
-  const { getSql } = await import("@/lib/db");
-  const sql = await getSql();
-  for (const [personId, pin] of Object.entries(assignedPins)) {
-    const hash = digest(key, pin);
-    if (personId === "darin") {
-      await sql.query(
-        `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
-         on conflict (person_id) do update
-         set pin_hash = excluded.pin_hash, pin_text = excluded.pin_text
-         where staff_pins.pin_text is null or staff_pins.pin_text = '4816'`,
-        [personId, hash, pin],
-      );
-      continue;
-    }
-    await sql.query(
-      `insert into staff_pins (person_id, pin_hash, pin_text) values ($1, $2, $3)
-       on conflict (person_id) do update set pin_text = coalesce(staff_pins.pin_text, excluded.pin_text)`,
-      [personId, hash, pin],
-    );
-  }
-}
-
 type Session = { personId: string; role: "owner" | "manager" | "technician"; name: string };
 
 const COOKIE = "onward-pin";
@@ -154,7 +111,6 @@ export const pinSignIn = createServerFn({ method: "POST" })
     return { pin };
   })
   .handler(async ({ data }) => {
-    await ensureAssignedPins();
     const key = await secret();
     const hash = digest(key, data.pin);
     const { getSql } = await import("@/lib/db");
@@ -181,7 +137,6 @@ export const pinSignOut = createServerFn({ method: "POST" }).handler(async () =>
 export const pinAssignments = createServerFn({ method: "GET" }).handler(async () => {
   const session = await readSession();
   if (!session) return [];
-  await ensureAssignedPins();
   const scope = await pinScope(session);
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
