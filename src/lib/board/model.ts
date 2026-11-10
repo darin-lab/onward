@@ -662,6 +662,25 @@ export function monthRecsPerVehicle(weeks: WeekLog[], techId: string, month = mo
   return Math.round(average * 100) / 100;
 }
 
+/**
+ * Hours per repair order for the month: all billed hours ÷ all repair orders.
+ * Each week's repair orders are its billed hours ÷ its BH/RO, so a busy week
+ * counts for more than a slow one.
+ */
+export function monthHoursPerRo(weeks: WeekLog[], techId: string, month = monthKey()) {
+  const entered = monthWeeks(weeks, techId, month).filter(
+    (week) => week.billedHours != null && (week.hoursPerRepairOrder ?? 0) > 0,
+  );
+  if (entered.length === 0) return null;
+  const hours = entered.reduce((total, week) => total + (week.billedHours ?? 0), 0);
+  const orders = entered.reduce(
+    (total, week) => total + (week.billedHours ?? 0) / (week.hoursPerRepairOrder ?? 1),
+    0,
+  );
+  if (orders <= 0) return null;
+  return Math.round((hours / orders) * 100) / 100;
+}
+
 export function companyPoll(techs: Tech[], weeks: WeekLog[]): PollRow[] {
   const month = leaderboardMonth(techs, weeks);
   const rows: PollRow[] = techs

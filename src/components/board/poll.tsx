@@ -5,6 +5,7 @@ import {
   formatMoney,
   formatRecord,
   leaderboardMonth,
+  monthHoursPerRo,
   monthName,
   monthRecsPerVehicle,
   type Tech,
@@ -27,6 +28,9 @@ export function CompanyPoll({
   const billed = companyPoll(techs, weeks);
   const month = leaderboardMonth(techs, weeks);
   const recs = recommendationsBoard(techs, weeks, month);
+  const hpro = monthBoard(techs, weeks, month, (techId) => monthHoursPerRo(weeks, techId, month), (value) =>
+    value.toFixed(2),
+  );
   const label = monthName(month);
 
   return (
@@ -51,9 +55,48 @@ export function CompanyPoll({
         shops={shops}
         highlightId={highlightId}
       />
+      <Board
+        metric={`Hours per repair order · ${label}`}
+        rows={hpro}
+        shops={shops}
+        highlightId={highlightId}
+      />
       </div>
     </section>
   );
+}
+
+/** A month leaderboard: highest first, techs with no number yet at the bottom. */
+function monthBoard(
+  techs: Tech[],
+  weeks: WeekLog[],
+  month: string,
+  amountOf: (techId: string) => number | null,
+  show: (value: number) => string,
+) {
+  const records = companyPoll(techs, weeks);
+  const rows = techs
+    .filter((person) => person.kind === "technician")
+    .map((tech) => ({
+      tech,
+      amount: amountOf(tech.id),
+      record: formatRecord(
+        records.find((row) => row.tech.id === tech.id)?.record ?? { wins: 0, losses: 0, draws: 0, played: 0 },
+      ),
+    }))
+    .sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1) || a.tech.name.localeCompare(b.tech.name));
+  let place = 0;
+  return rows.map((row) => {
+    const ranked = row.amount != null;
+    if (ranked) place += 1;
+    return {
+      tech: row.tech,
+      rank: ranked ? place : null,
+      record: row.record,
+      value: row.amount == null ? "—" : show(row.amount),
+      shopId: row.tech.shopId,
+    };
+  });
 }
 
 function recommendationsBoard(techs: Tech[], weeks: WeekLog[], month: string) {
