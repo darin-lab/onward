@@ -694,3 +694,30 @@ export function resultStory(result: WeekResult | null) {
   }
   return "The manager hasn't marked this week yet.";
 }
+
+/** End of Day opens at 5 PM shop time, so nobody snapshots the morning's numbers. */
+export const END_OF_DAY_HOUR = 17;
+export const END_OF_DAY_WAIT = "End of Day opens at 5 PM.";
+
+/** Today's date and hour in shop time (Pacific). */
+export function shopClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return { day: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")) };
+}
+
+/** A report for an earlier day is always open; today's opens at 5 PM; a later day never is. */
+export function endOfDayOpen(date?: string, now = new Date()) {
+  const clock = shopClock(now);
+  const day = date ?? clock.day;
+  if (day < clock.day) return true;
+  if (day > clock.day) return false;
+  return clock.hour >= END_OF_DAY_HOUR;
+}

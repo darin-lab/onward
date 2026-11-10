@@ -338,6 +338,8 @@ export const submitDayReport = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }) => {
+    const { endOfDayOpen, END_OF_DAY_WAIT } = await import("@/lib/board/model");
+    if (!endOfDayOpen(data.date)) throw new Error(END_OF_DAY_WAIT);
     const who = await allowedShop(data.shopId);
     const sql = await sqlForRecords();
     const { insertDayReport, boardPeople, owedTechReviews } = await import("@/lib/board/records.server");

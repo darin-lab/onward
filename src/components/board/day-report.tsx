@@ -3,7 +3,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   DAY_FIELDS,
   DAY_PROMPTS,
+  END_OF_DAY_WAIT,
+  endOfDayOpen,
   focusReview,
+  shopClock,
   techReviewStage,
   weekRangeLabel,
   type DayFieldKey,
@@ -21,10 +24,7 @@ import { Button, Card, fieldClass } from "@/components/board/ui";
 import { cn } from "@/lib/cn";
 
 function todayISO() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+  return shopClock().day;
 }
 
 const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFieldKey, string>> }> = {
@@ -182,6 +182,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const [draft, setDraft] = useState<Partial<Record<DayFieldKey, string>>>({});
   const [notes, setNotes] = useState<Partial<Record<DayFieldKey, string>>>({});
   const [answers, setAnswers] = useState<Partial<Record<DayPromptKey, string>>>({});
+  // Before 5 PM today's report stays closed, so no early snapshot of the numbers.
+  const [open, setOpen] = useState(() => endOfDayOpen(date));
+  useEffect(() => {
+    setOpen(endOfDayOpen(date));
+    const timer = window.setInterval(() => setOpen(endOfDayOpen(date)), 30_000);
+    return () => window.clearInterval(timer);
+  }, [date]);
 
   useEffect(() => {
     // A call reflection sent while this page was closed has to show up here.
@@ -229,7 +236,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const ready = notesReady && promptsReady;
 
   useEffect(() => {
-    if (submitted) return;
+    if (submitted || !open) return;
     let cancel = false;
     void pullShopRange({ data: { shopId, start: date, end: date } }).then((result) => {
       if (cancel || !result.ok) return;
@@ -245,7 +252,25 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     return () => {
       cancel = true;
     };
-  }, [shopId, date, submitted]);
+  }, [shopId, date, submitted, open]);
+
+  if (!open) {
+    return (
+      <div>
+        <Link to="/" className="inline-flex min-h-11 items-center text-sm text-honey">
+          Back to {shop?.name ?? "the shop"}
+        </Link>
+        <h1 className="mt-3 text-4xl text-ink">End of Day Report</h1>
+        <p className="mt-2 text-muted">{shop?.name}</p>
+        <Card className="mt-6">
+          <p className="font-display text-2xl text-ink">{END_OF_DAY_WAIT}</p>
+          <p className="mt-2 text-sm text-muted">
+            Come back after 5 so the report has the whole day's numbers.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   const person = techs.find((item) => item.id === viewer);
   const waiting = person?.kind === "manager" ? pendingCalls(calls, person.id)[0] : null;

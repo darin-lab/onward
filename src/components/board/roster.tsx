@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import {
+  END_OF_DAY_WAIT,
+  endOfDayOpen,
   companyPoll,
   featuredWeek,
   formatHours,
@@ -99,13 +101,7 @@ export function Roster() {
           ) : (
             <p className="mt-3 text-muted">No manager is named yet.</p>
           )}
-          <Link
-            to="/day/$shopId"
-            params={{ shopId: lens }}
-            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-md bg-honey px-5 font-display text-sm font-semibold tracking-wide text-honey-fg uppercase italic"
-          >
-            End of Day Report
-          </Link>
+          <EndOfDayButton shopId={lens} />
         </>
       )}
       <ul className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -688,5 +684,53 @@ function CategoryEditor() {
         </div>
       ))}
     </Card>
+  );
+}
+
+/** Grey until 5 PM. Hovering or clicking early says when it opens. */
+function EndOfDayButton({ shopId }: { shopId: string }) {
+  const [open, setOpen] = useState(() => endOfDayOpen());
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    const timer = window.setInterval(() => setOpen(endOfDayOpen()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (!hint) return;
+    const timer = window.setTimeout(() => setHint(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [hint]);
+  const look =
+    "mt-4 inline-flex min-h-11 items-center justify-center rounded-md px-5 font-display text-sm font-semibold tracking-wide uppercase italic";
+  if (open) {
+    return (
+      <Link to="/day/$shopId" params={{ shopId }} className={cn(look, "bg-honey text-honey-fg")}>
+        End of Day Report
+      </Link>
+    );
+  }
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        aria-disabled="true"
+        onMouseEnter={() => setHint(true)}
+        onMouseLeave={() => setHint(false)}
+        onFocus={() => setHint(true)}
+        onBlur={() => setHint(false)}
+        onClick={() => setHint(true)}
+        className={cn(look, "cursor-not-allowed bg-zinc-700 text-zinc-400")}
+      >
+        End of Day Report
+      </button>
+      {hint ? (
+        <span
+          role="status"
+          className="absolute top-full left-0 z-20 mt-2 rounded-md bg-surface px-3 py-2 text-sm whitespace-nowrap text-ink shadow-border"
+        >
+          {END_OF_DAY_WAIT}
+        </span>
+      ) : null}
+    </span>
   );
 }
