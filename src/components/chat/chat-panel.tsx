@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, startChat, stopChat, setOpen, openRoom, openDm, createRoom, sendMessage, deleteMessage,
-  noteTyping, muteRoom, setAwayMessage, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
+  noteTyping, muteRoom, setStatus, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
 import { chatKeepPhoto, chatPhoto, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
 import { useBoard } from "@/lib/board/store";
-import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings } from "@/lib/chat/types";
+import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
 
-const dot = { online: "bg-green-500", away: "bg-amber-400", offline: "bg-neutral-600" } as const;
+const dot: Record<ChatState, string> = {
+  online: "bg-green-500", under_car: "bg-amber-400", with_client: "bg-sky-400", offline: "bg-neutral-600",
+};
+const statusLabel: Record<ChatState, string> = {
+  online: "Online", offline: "Offline", under_car: "Under a Car", with_client: "With a Client",
+};
 
 function Avatar({ person, size = 32 }: { person?: ChatPerson; size?: number }) {
   const src = useChat((s) => (person ? s.avatars[person.id] : undefined));
@@ -22,7 +27,7 @@ function Avatar({ person, size = 32 }: { person?: ChatPerson; size?: number }) {
 
 function Dot({ id }: { id: string }) {
   const state = useChat((s) => s.presence[id]?.state ?? "offline");
-  return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dot[state]}`} title={state} />;
+  return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dot[state]}`} title={statusLabel[state]} />;
 }
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -100,9 +105,6 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   const rooms = useChat((s) => s.rooms);
   const presence = useChat((s) => s.presence);
   const sound = useChat((s) => s.sound);
-  const away = useChat((s) => s.away);
-  const [awayText, setAwayText] = useState("");
-  const [showAway, setShowAway] = useState(false);
   const me = boot.me;
   const owner = me.role === "owner";
   const people = boot.people.filter((p) => p.id !== me.personId);
@@ -120,7 +122,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [people]);
-  const rank = (id: string) => (presence[id]?.state === "online" ? 0 : presence[id]?.state === "away" ? 1 : 2);
+  const rank = (id: string) => ((presence[id]?.state ?? "offline") === "offline" ? 2 : presence[id]?.state === "online" ? 0 : 1);
   const sorted = (list: ChatPerson[]) => [...list].sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name));
   const roomRow = (r: ChatRoomInfo, prefix = "") => (
     <button key={r.id} type="button" onClick={() => void openRoom(r.id)}
@@ -146,7 +148,9 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
           <Dot id={p.id} />
         </span>
         <span className="block truncate text-[11px] text-muted">
-          {presence[p.id]?.state === "away" && presence[p.id]?.away ? presence[p.id].away : p.title}
+          {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
+            ? statusLabel[presence[p.id].state]
+            : p.title}
         </span>
       </span>
     </button>
@@ -166,19 +170,16 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         <ProfilePicture />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-ink">{me.name}</p>
-          <button type="button" onClick={() => setShowAway(!showAway)} className="text-[11px] text-muted underline-offset-2 hover:underline">
-            {away ? "Away · tap to come back" : "Online · set away message"}
-          </button>
+          <select value={presence[me.personId]?.state ?? "online"} onChange={(e) => void setStatus(e.target.value as ChatState)}
+            className="mt-0.5 rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-xs text-ink" aria-label="Your status">
+            <option value="online">Online</option>
+            <option value="under_car">Under a Car</option>
+            <option value="with_client">With a Client</option>
+            <option value="offline">Offline</option>
+          </select>
         </div>
         <button type="button" onClick={() => setSound(!sound)} className="text-xs text-muted hover:text-ink">{sound ? "Sound on" : "Sound off"}</button>
       </div>
-      {showAway ? (
-        <form className="flex gap-2 border-b border-white/10 p-3" onSubmit={(e) => { e.preventDefault(); void setAwayMessage(awayText); setShowAway(false); setAwayText(""); }}>
-          <input value={awayText} onChange={(e) => setAwayText(e.target.value)} maxLength={80} placeholder="At lunch, back at 1…  (blank = I'm back)"
-            className="min-w-0 flex-1 rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-sm text-ink" />
-          <button type="submit" className="rounded-sm bg-honey px-3 text-sm text-white">Set</button>
-        </form>
-      ) : null}
       <NotifyCard />
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         {group("Channels", channels.map((r) => roomRow(r, "# ")))}

@@ -4,7 +4,7 @@ import {
   chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
   chatRead, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
 } from "@/lib/chat/chat.functions";
-import type { ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
+import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
 
 type Popup = { roomId: string; title: string; text: string } | null;
 
@@ -21,14 +21,13 @@ type State = {
   typing: string[];
   popup: Popup;
   sound: boolean;
-  away: boolean;
   error: string;
 };
 
 export const useChat = create<State>(() => ({
   status: null, boot: null, rooms: [], presence: {}, avatars: {}, meetUrl: "",
   open: false, activeRoom: null, messages: [], typing: [], popup: null,
-  sound: readSound(), away: false, error: "",
+  sound: readSound(), error: "",
 }));
 const set = useChat.setState;
 const get = useChat.getState;
@@ -59,6 +58,7 @@ let lastId = 0;
 let since: string | null = null;
 let seeded = false;
 let lastActivity = Date.now();
+void lastActivity;
 let inFlight = false;
 
 function visible() { return typeof document !== "undefined" && document.visibilityState === "visible"; }
@@ -142,12 +142,6 @@ async function poll() {
       const room = s.rooms.find((r) => r.id === s.activeRoom);
       if (room && room.unread > 0) void chatRead({ data: { roomId: s.activeRoom, upTo: lastId } });
     }
-    // Auto-away after 10 quiet minutes
-    const idle = Date.now() - lastActivity > 10 * 60 * 1000;
-    if (idle !== s.away) {
-      set({ away: idle });
-      void chatPresence({ data: { status: idle ? "away" : "online", away: idle ? "Away from keyboard" : "" } });
-    }
   } catch {
     set({ error: "Can't reach chat right now." });
   } finally {
@@ -170,10 +164,6 @@ function onVisibility() {
 }
 function onActivity() {
   lastActivity = Date.now();
-  if (get().away) {
-    set({ away: false });
-    void chatPresence({ data: { status: "online", away: "" } });
-  }
 }
 function onWorkerMessage(e: MessageEvent) {
   if (e.data?.type === "open-room") void openRoom(String(e.data.roomId));
@@ -262,11 +252,10 @@ export async function muteRoom(roomId: string, muted: boolean) {
   await poll();
 }
 
-export async function setAwayMessage(message: string) {
-  const on = message.trim().length > 0;
-  set({ away: on });
-  lastActivity = on ? 0 : Date.now();
-  await chatPresence({ data: { status: on ? "away" : "online", away: message } });
+export async function setStatus(status: ChatState) {
+  const me = get().boot?.me.personId;
+  if (me) set({ presence: { ...get().presence, [me]: { state: status } } });
+  await chatPresence({ data: { status } });
 }
 
 // ---------- images ----------

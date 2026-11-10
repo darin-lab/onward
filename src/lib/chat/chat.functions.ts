@@ -217,16 +217,17 @@ export const chatCreateRoom = createServerFn({ method: "POST" })
 
 export const chatPresence = createServerFn({ method: "POST" })
   .validator((input: unknown) => {
-    const d = (input ?? {}) as { status?: unknown; away?: unknown };
-    return { status: d.status === "away" ? "away" : "online", away: str(d.away, 80) } as const;
+    const s = (input as { status?: unknown })?.status;
+    const status = s === "offline" || s === "under_car" || s === "with_client" ? s : "online";
+    return { status } as const;
   })
   .handler(async ({ data }) => {
     const { requireChat } = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await requireChat();
     await sql.query(
-      `insert into chat_presence (person_id, status, away_message, last_seen) values ($1, $2, $3, now())
-       on conflict (person_id) do update set status = $2, away_message = $3, last_seen = now()`,
-      [viewer.personId, data.status, data.status === "away" ? data.away : null],
+      `insert into chat_presence (person_id, status, away_message, last_seen) values ($1, $2, null, now())
+       on conflict (person_id) do update set status = $2, away_message = null, last_seen = now()`,
+      [viewer.personId, data.status],
     );
     return { ok: true as const };
   });

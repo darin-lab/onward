@@ -48,7 +48,9 @@ export type ChatMessageInfo = {
   kept: boolean;
 };
 
-export type ChatPresence = Record<string, { state: "online" | "away" | "offline"; away: string }>;
+export type ChatState = "online" | "offline" | "under_car" | "with_client";
+
+export type ChatPresence = Record<string, { state: ChatState }>;
 
 export type ChatSettings = {
   meetUrl: string;

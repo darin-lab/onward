@@ -207,21 +207,14 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
 }
 
 export async function buildPresence(sql: Sql): Promise<ChatPresence> {
-  const rows = await sql.query<{
-    person_id: string;
-    status: string;
-    away_message: string | null;
-    fresh: boolean;
-  }>(
-    `select person_id, status, away_message,
-            (last_seen > now() - interval '90 seconds') as fresh
-       from chat_presence`,
+  const rows = await sql.query<{ person_id: string; status: string; fresh: boolean }>(
+    `select person_id, status, (last_seen > now() - interval '90 seconds') as fresh from chat_presence`,
   );
   const out: ChatPresence = {};
   for (const row of rows) {
-    out[row.person_id] = row.fresh
-      ? { state: row.status === "away" ? "away" : "online", away: row.status === "away" ? (row.away_message ?? "") : "" }
-      : { state: "offline", away: "" };
+    // Someone who closed the app shows offline; otherwise the status they picked.
+    const picked = row.status === "under_car" || row.status === "with_client" ? row.status : row.status === "offline" ? "offline" : "online";
+    out[row.person_id] = { state: row.fresh ? picked : "offline" };
   }
   return out;
 }
