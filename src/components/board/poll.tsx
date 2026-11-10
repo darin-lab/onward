@@ -120,7 +120,15 @@ function Board({
                   highlight ? "bg-honey text-honey-fg" : "bg-surface shadow-border",
                 )}
               >
-                <span className="w-8 font-display text-2xl font-semibold tabular-nums">
+                <span
+                  className={cn(
+                    "w-8 font-display text-2xl font-semibold tabular-nums",
+                    // Top three in gold, silver and bronze, like the shop ranking.
+                    row.rank === 1 && "metal metal-gold",
+                    row.rank === 2 && "metal metal-silver",
+                    row.rank === 3 && "metal metal-bronze",
+                  )}
+                >
                   {row.rank ?? "–"}
                 </span>
                 <span className="min-w-0 flex-1">
