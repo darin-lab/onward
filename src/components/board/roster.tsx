@@ -263,7 +263,7 @@ export function ToolsMenu() {
   const [open, setOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [emptyNote, setEmptyNote] = useState(false);
-  const [panel, setPanel] = useState<"call" | "cash" | "pins" | "emails" | "habits" | "receipts" | null>(null);
+  const [panel, setPanel] = useState<"call" | "cash" | "pins" | "emails" | "habits" | "receipts" | "staff" | null>(null);
   if (!owner && !manager && !technician) return null;
   const items = technician
     ? ([
@@ -275,6 +275,7 @@ export function ToolsMenu() {
         ["call", "Call reflection"],
         ["cash", "Cash Transfer"],
         ["receipts", "Receipts"],
+        ["staff", "Staff"],
         ["pins", "Pin editor"],
         ["emails", "Emails"],
         ["habits", "Habits"],
@@ -346,7 +347,7 @@ export function ToolsMenu() {
               {id === "call" ? <BrickPhone /> : null}
               {id === "cash" ? <Bills /> : null}
               {id === "receipts" ? <ReceiptMark /> : null}
-              {id === "pins" || id === "emails" || id === "habits" ? <span aria-hidden="true">•</span> : null}
+              {id === "pins" || id === "emails" || id === "habits" || id === "staff" ? <span aria-hidden="true">•</span> : null}
               {label}
               {id === "call" && queue.length > 0 ? (
                 <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-honey px-1 text-[10px] font-semibold text-white">
@@ -393,6 +394,7 @@ export function ToolsMenu() {
           ) : null}
           {panel === "emails" ? <EmailList /> : null}
           {panel === "habits" ? <CategoryEditor /> : null}
+          {panel === "staff" && owner ? <StaffEditor /> : null}
           {panel === "receipts" ? <ReceiptDesk /> : null}
         </ToolPopup>
       ) : null}
@@ -765,5 +767,147 @@ function SalesRank({ rank }: { rank: number }) {
     >
       #{rank}
     </span>
+  );
+}
+
+/** Darin and Arun add, rename, move and remove staff. Saves with the board. */
+function StaffEditor() {
+  const techs = useBoard((state) => state.techs);
+  const shops = useBoard((state) => state.shops);
+  const updateTech = useBoard((state) => state.updateTech);
+  const addTech = useBoard((state) => state.addTech);
+  const removeTech = useBoard((state) => state.removeTech);
+  const [name, setName] = useState("");
+  const [shopId, setShopId] = useState(shops[0]?.id ?? "");
+  const [kind, setKind] = useState<Tech["kind"]>("technician");
+  const [note, setNote] = useState("");
+  const managerOf = (id: string) => techs.find((person) => person.kind === "manager" && person.shopId === id);
+
+  return (
+    <Card>
+      <h3 className="text-xl">Staff</h3>
+      <form
+        className="mt-4 grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const clean = name.trim().replace(/\s+/g, " ");
+          if (clean.length < 2) {
+            setNote("Type their full name.");
+            return;
+          }
+          if (kind === "manager" && managerOf(shopId)) {
+            setNote(`${shops.find((shop) => shop.id === shopId)?.name} already has a manager. Change that person below instead.`);
+            return;
+          }
+          if (techs.some((person) => person.name.toLowerCase() === clean.toLowerCase())) {
+            setNote(`${clean} is already on the board.`);
+            return;
+          }
+          addTech(clean, kind === "manager" ? "General Manager" : "Technician", shopId, kind);
+          setNote(`Added ${clean}. Give them a PIN in Pin editor.`);
+          setName("");
+        }}
+      >
+        <label className="text-sm text-muted" htmlFor="staff-new-name">
+          Add someone
+        </label>
+        <input
+          id="staff-new-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Full name"
+          autoComplete="off"
+          className={fieldClass}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <label className="sr-only" htmlFor="staff-new-shop">Shop</label>
+          <select id="staff-new-shop" value={shopId} onChange={(event) => setShopId(event.target.value)} className={fieldClass}>
+            {shops.map((shop) => (
+              <option key={shop.id} value={shop.id}>{shop.name}</option>
+            ))}
+          </select>
+          <label className="sr-only" htmlFor="staff-new-kind">Job</label>
+          <select
+            id="staff-new-kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as Tech["kind"])}
+            className={fieldClass}
+          >
+            <option value="technician">Technician</option>
+            <option value="manager">General Manager</option>
+          </select>
+        </div>
+        <Button type="submit">Add</Button>
+        {note ? <p className="text-sm text-muted">{note}</p> : null}
+      </form>
+      {shops.map((shop) => {
+        const crew = techs
+          .filter((person) => person.shopId === shop.id)
+          .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "manager" ? -1 : 1));
+        return (
+          <div key={shop.id} className="mt-6">
+            <h4 className="font-sans text-sm font-medium text-honey">{shop.name}</h4>
+            <ul className="mt-2 space-y-3">
+              {crew.map((person) => (
+                <li key={person.id} className="grid gap-2 rounded-md bg-raised p-3 shadow-border">
+                  <div className="flex items-center gap-2">
+                    <label className="sr-only" htmlFor={`staff-name-${person.id}`}>Name</label>
+                    <input
+                      id={`staff-name-${person.id}`}
+                      value={person.name}
+                      onChange={(event) => updateTech(person.id, { name: event.target.value })}
+                      onBlur={(event) => {
+                        const clean = event.target.value.trim().replace(/\s+/g, " ");
+                        updateTech(person.id, { name: clean || person.name.trim() || "Name" });
+                      }}
+                      className={cn(fieldClass, "min-w-0 flex-1")}
+                    />
+                    <span className="shrink-0 text-xs text-muted">
+                      {person.kind === "manager" ? "Manager" : "Tech"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="sr-only" htmlFor={`staff-role-${person.id}`}>Title</label>
+                    <input
+                      id={`staff-role-${person.id}`}
+                      value={person.role}
+                      onChange={(event) => updateTech(person.id, { role: event.target.value })}
+                      className={cn(fieldClass, "min-w-0 flex-1")}
+                    />
+                    {person.kind === "technician" ? (
+                      <>
+                        <label className="sr-only" htmlFor={`staff-shop-${person.id}`}>Shop</label>
+                        <select
+                          id={`staff-shop-${person.id}`}
+                          value={person.shopId}
+                          onChange={(event) => updateTech(person.id, { shopId: event.target.value })}
+                          className={cn(fieldClass, "w-36")}
+                        >
+                          {shops.map((item) => (
+                            <option key={item.id} value={item.id}>{item.name}</option>
+                          ))}
+                        </select>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="min-h-11 shrink-0 px-2 text-sm text-honey"
+                      onClick={() => {
+                        if (!window.confirm(`Remove ${person.name} from the board? Their past check-ins are kept.`)) return;
+                        removeTech(person.id);
+                        setNote(`Removed ${person.name}.`);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {crew.length === 0 ? <li className="text-sm text-muted">No one here yet.</li> : null}
+            </ul>
+          </div>
+        );
+      })}
+    </Card>
   );
 }

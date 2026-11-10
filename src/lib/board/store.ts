@@ -37,9 +37,9 @@ type BoardState = {
   boardReady: boolean;
   setLens: (lens: string) => void;
   setViewer: (viewer: string) => void;
-  updateTech: (id: string, patch: Partial<Pick<Tech, "name" | "role" | "email">>) => void;
+  updateTech: (id: string, patch: Partial<Pick<Tech, "name" | "role" | "email" | "shopId">>) => void;
   updateShop: (id: string, patch: Partial<Pick<Shop, "name" | "address">>) => void;
-  addTech: (name: string, role: string, shopId: string) => string;
+  addTech: (name: string, role: string, shopId: string, kind?: Tech["kind"]) => string;
   removeTech: (id: string) => void;
   updateCategory: (id: string, patch: Partial<Pick<Category, "name" | "hint">>) => void;
   upsertWeek: (entry: WeekLog) => void;
@@ -97,7 +97,7 @@ export const useBoard = create<BoardState>()(
           sampleCrew: false,
           shops: state.shops.map((shop) => (shop.id === id ? { ...shop, ...patch } : shop)),
         })),
-      addTech: (name, role, shopId) => {
+      addTech: (name, role, shopId, kind = "technician") => {
         const id = uniqueTechId(get().techs, name);
         set((state) => ({
           sampleCrew: false,
@@ -106,9 +106,9 @@ export const useBoard = create<BoardState>()(
             {
               id,
               name: name.trim(),
-              role: role.trim() || "Technician",
+              role: role.trim() || (kind === "manager" ? "General Manager" : "Technician"),
               email: "",
-              kind: "technician",
+              kind,
               shopId,
             },
           ],
