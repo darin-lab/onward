@@ -139,6 +139,57 @@ const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: nu
 
 const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
 
+/** What each number means, behind the ? next to its name. Numbers without text get no ?. */
+const ABOUT: Partial<Record<DayFieldKey, string>> = {
+  elr: "ELR (Effective Labor Rate): am I making enough dollars per billed hour to ensure strong sales and gross profit?",
+  hpro: "HPRO (Hours Per Repair Order): am I identifying additional recommendations on every car and selling them?",
+  spbh: "SPBH (Sales Per Billed Hour): am I adding in parts and sublets that add value to our customers and ensure strong sales and gross profit?",
+};
+
+function AboutTip({ id, label, text }: { id: string; label: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && document.getElementById(id)?.contains(target)) return;
+      setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open, id]);
+  return (
+    <span id={id} className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={`What ${label} means`}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="-my-2 inline-flex size-11 items-center justify-center"
+      >
+        <span className="inline-flex size-5 items-center justify-center rounded-full text-xs font-semibold text-muted shadow-border">
+          ?
+        </span>
+      </button>
+      {open ? (
+        <span
+          role="note"
+          className="absolute top-full left-0 z-30 mt-1 w-72 max-w-[80vw] rounded-md bg-raised p-3 text-sm leading-snug text-ink shadow-border"
+        >
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /** These three also show a week-to-date number, and their note opens only when that is below goal. */
 const WEEKLY = ["productivity", "efficiency", "proficiency"] as const;
 type WeeklyKey = (typeof WEEKLY)[number];
@@ -456,9 +507,14 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             return (
               <li key={field.key} className="py-1.5">
                 <div className="flex items-center gap-3">
-                  <label className="min-w-0 flex-1 text-sm text-ink" htmlFor={field.key}>
-                    {field.label}
-                  </label>
+                  <span className="flex min-w-0 flex-1 items-center">
+                    <label className="min-w-0 text-sm text-ink" htmlFor={field.key}>
+                      {field.label}
+                    </label>
+                    {ABOUT[field.key] ? (
+                      <AboutTip id={`about-${field.key}`} label={field.label} text={ABOUT[field.key] ?? ""} />
+                    ) : null}
+                  </span>
                   <span className="w-28 shrink-0 text-right text-xs whitespace-nowrap text-muted">
                     {GOALS[field.key]?.label ?? ""}
                   </span>
