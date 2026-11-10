@@ -202,7 +202,7 @@ function stageRank(stage: WeekLog["reviewStage"]) {
  * save from an older copy never wipes the other side's work:
  * - Technician review: Darin or Arun own billed hours, BH/RO, total
  *   recommendations and cars; the manager owns service hours, notes,
- *   boomerangs and habits. Once the manager confirms ("Are YOU sure?" → Yes) and locks it, it stays locked.
+ *   boomerangs and habits. Once the manager confirms ("you for reals right now?" → "i am for reals") and locks it, it stays locked.
  * - Manager review: only Darin or Arun write it. Each can turn on only their
  *   own name, a green name stays green, and Submit needs both.
  */
