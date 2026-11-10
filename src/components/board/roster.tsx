@@ -267,6 +267,7 @@ export function ToolsMenu() {
   if (!owner && !manager && !technician) return null;
   const items = technician
     ? ([
+        ["pins", "Pin editor"],
         ["fb-arun", "Feedback · Arun"],
         ["fb-darin", "Feedback · Darin"],
       ] as const)
@@ -284,6 +285,7 @@ export function ToolsMenu() {
         ["call", "Call reflection"],
         ["cash", "Cash Transfer"],
         ["receipts", "Receipts"],
+        ["pins", "Pin editor"],
         ["fb-arun", "Feedback · Arun"],
         ["fb-darin", "Feedback · Darin"],
       ] as const);
@@ -523,13 +525,29 @@ function SavedWeekLine({ techId }: { techId: string }) {
 
 function PinList() {
   const techs = useBoard((state) => state.techs);
+  const viewer = useBoard((state) => state.viewer);
+  const owner = isOwnerViewer(viewer);
   const [pins, setPins] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
-  const people = [
-    { id: "darin", name: "Darin Dinis" },
-    { id: "arun", name: "Arun" },
-    ...techs.map((person) => ({ id: person.id, name: person.name })),
-  ];
+  const me = techs.find((person) => person.id === viewer);
+  // Darin and Arun: everyone. A manager: themselves and their shop's technicians.
+  // A technician: themselves. The server checks the same thing.
+  const people = owner
+    ? [
+        { id: "darin", name: "Darin Dinis" },
+        { id: "arun", name: "Arun" },
+        ...techs.map((person) => ({ id: person.id, name: person.name })),
+      ]
+    : me
+      ? [
+          { id: me.id, name: me.name },
+          ...(me.kind === "manager"
+            ? techs
+                .filter((person) => person.kind === "technician" && person.shopId === me.shopId)
+                .map((person) => ({ id: person.id, name: person.name }))
+            : []),
+        ]
+      : [];
 
   useEffect(() => {
     void pinAssignments()
@@ -550,9 +568,10 @@ function PinList() {
           personId={person.id}
           name={person.name}
           currentPin={pins[person.id] ?? ""}
+          canType={owner}
           onSaved={(pin) => {
             setPins((current) => ({ ...current, [person.id]: pin }));
-            setNote(`${person.name} saved.`);
+            setNote(`${person.name}'s PIN is ${pin}.`);
           }}
           onFailed={(reason) => setNote(reason)}
         />
@@ -600,12 +619,15 @@ function PinRow({
   personId,
   name,
   currentPin,
+  canType,
   onSaved,
   onFailed,
 }: {
   personId: string;
   name: string;
   currentPin: string;
+  /** Darin and Arun can type a PIN; everyone else only gets a random one. */
+  canType: boolean;
   onSaved: (pin: string) => void;
   onFailed: (reason: string) => void;
 }) {
@@ -628,23 +650,31 @@ function PinRow({
       <label className="min-w-0 flex-1 text-sm text-ink" htmlFor={`pin-${personId}`}>
         {name}
       </label>
-      <input
-        id={`pin-${personId}`}
-        inputMode="numeric"
-        autoComplete="off"
-        maxLength={4}
-        value={pin}
-        onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-        placeholder="4 digits"
-        className="min-h-11 w-28 rounded-md bg-raised px-3 text-ink shadow-border"
-      />
-      <Button type="submit" tone="quiet" disabled={pin.length !== 4 || pin === currentPin}>
-        Save
-      </Button>
+      {canType ? (
+        <>
+          <input
+            id={`pin-${personId}`}
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={4}
+            value={pin}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="4 digits"
+            className="min-h-11 w-28 rounded-md bg-raised px-3 text-ink shadow-border"
+          />
+          <Button type="submit" tone="quiet" disabled={pin.length !== 4 || pin === currentPin}>
+            Save
+          </Button>
+        </>
+      ) : (
+        <span id={`pin-${personId}`} className="w-16 text-right font-display text-lg tabular-nums text-ink">
+          {currentPin || "••••"}
+        </span>
+      )}
       <Button
         tone="quiet"
         onClick={() => {
-          if (currentPin && !window.confirm(`Give ${name} a new PIN? The old one stops working.`)) return;
+          if ((currentPin || !canType) && !window.confirm(`Give ${name} a new PIN? The old one stops working.`)) return;
           void randomPersonPin({ data: { personId } }).then((result) => {
             if (!result.ok) {
               onFailed(result.reason);

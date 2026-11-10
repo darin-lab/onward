@@ -104,6 +104,34 @@ async function describe(personId: string): Promise<Session | null> {
   };
 }
 
+/** Board people with their shop, for deciding whose PIN someone may reset. */
+async function boardCrew(): Promise<{ id: string; kind: string; shopId: string }[]> {
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  const rows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
+  const raw = rows[0]?.data;
+  if (!raw) return [];
+  const board = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return (board.techs ?? []) as { id: string; kind: string; shopId: string }[];
+}
+
+/**
+ * Darin and Arun: everyone. A manager: themselves and the technicians at
+ * their shop. A technician: only themselves.
+ */
+async function pinScope(session: Session): Promise<Set<string> | "all"> {
+  if (session.role === "owner") return "all";
+  const scope = new Set([session.personId]);
+  if (session.role === "manager") {
+    const crew = await boardCrew();
+    const shopId = crew.find((person) => person.id === session.personId)?.shopId;
+    for (const person of crew) {
+      if (shopId && person.kind === "technician" && person.shopId === shopId) scope.add(person.id);
+    }
+  }
+  return scope;
+}
+
 async function writeSession(personId: string) {
   const key = await secret();
   const exp = Date.now() + 1000 * 60 * 60 * 24 * 30;
@@ -152,14 +180,22 @@ export const pinSignOut = createServerFn({ method: "POST" }).handler(async () =>
 
 export const pinAssignments = createServerFn({ method: "GET" }).handler(async () => {
   const session = await readSession();
-  if (session?.role !== "owner") return [];
+  if (!session) return [];
   await ensureAssignedPins();
+  const scope = await pinScope(session);
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql.query<{ person_id: string; pin_text: string | null }>(
     "select person_id, pin_text from staff_pins",
   );
-  return rows.map((row) => ({ personId: row.person_id, pin: row.pin_text ?? "" }));
+  // Darin and Arun see every PIN. Everyone else sees only their own; a
+  // manager sees a technician's PIN only right after giving them a new one.
+  return rows
+    .filter((row) => scope === "all" || scope.has(row.person_id))
+    .map((row) => ({
+      personId: row.person_id,
+      pin: scope === "all" || row.person_id === session.personId ? (row.pin_text ?? "") : "",
+    }));
 });
 
 export const setPersonPin = createServerFn({ method: "POST" })
@@ -209,7 +245,9 @@ export const randomPersonPin = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const session = await readSession();
-    if (session?.role !== "owner") return { ok: false as const, reason: "Sign in as an owner first." };
+    if (!session) return { ok: false as const, reason: "Sign in first." };
+    const scope = await pinScope(session);
+    if (scope !== "all" && !scope.has(data.personId)) return { ok: false as const, reason: "Not allowed." };
     if (!owners.has(data.personId)) {
       const person = await describe(data.personId);
       if (!person) return { ok: false as const, reason: "That person is not on the board." };
