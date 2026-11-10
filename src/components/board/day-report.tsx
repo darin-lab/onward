@@ -220,8 +220,8 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const submitted = Boolean(saved?.submitted);
   const best = BEST_MONTH[shopId];
   const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
-  // Efficiency is billed hours divided by work hours.
-  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.workHours));
+  // Efficiency is billed hours divided by service hours.
+  const efficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.serviceHours));
   const proficiency = asPercent(readNumber(draft.billedHours), readNumber(draft.availableHours));
   const shown: Partial<Record<DayFieldKey, string>> = {
     ...draft,
