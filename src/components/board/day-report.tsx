@@ -7,6 +7,7 @@ import {
   END_OF_DAY_WAIT,
   endOfDayOpen,
   focusReview,
+  isOwnerViewer,
   mondayISO,
   shopClock,
   techReviewStage,
@@ -280,6 +281,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const [answers, setAnswers] = useState<Partial<Record<DayPromptKey, string>>>({});
   // Before 5 PM today's report stays closed, so no early snapshot of the numbers.
   const [open, setOpen] = useState(() => endOfDayOpen(date));
+  // Darin and Arun can look at End of Day any time; sending still waits for 5 PM.
+  const owner = isOwnerViewer(viewer);
+  const previewing = owner && !open;
   useEffect(() => {
     setOpen(endOfDayOpen(date));
     const timer = window.setInterval(() => setOpen(endOfDayOpen(date)), 30_000);
@@ -358,7 +362,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const ready = notesReady && promptsReady;
 
   useEffect(() => {
-    if (submitted || !open) return;
+    if (submitted || !(open || owner)) return;
     let cancel = false;
     void pullShopRange({ data: { shopId, start: date, end: date } }).then((result) => {
       if (cancel || !result.ok) return;
@@ -374,9 +378,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     return () => {
       cancel = true;
     };
-  }, [shopId, date, submitted, open]);
+  }, [shopId, date, submitted, open, owner]);
 
-  if (!open) {
+  if (!open && !owner) {
     return (
       <div>
         <Link to="/" className="inline-flex min-h-11 items-center text-sm text-honey">
@@ -489,6 +493,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
       </Link>
       <h1 className="mt-3 text-4xl text-ink">End of Day Report</h1>
       <p className="mt-2 text-muted">{shop?.name}</p>
+      {previewing ? (
+        <p className="mt-3 rounded-md bg-raised px-3 py-2 text-sm text-ink shadow-border">
+          Preview. Managers can open this at 5 PM; until then the numbers are from earlier in the day.
+        </p>
+      ) : null}
 
       <Card className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -603,9 +612,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
 
       <Button
         className="mt-6 w-full text-base"
-        disabled={sending || !ready}
+        disabled={sending || !ready || previewing}
         onClick={() => {
-          if (sending || !ready) return;
+          if (sending || !ready || previewing) return;
           setSending(true);
           setProblem("");
           void writable(() => submitDayReport({
@@ -659,7 +668,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
       </Button>
       {problem ? <p className="mt-3 text-sm text-honey">{problem}</p> : null}
       <p className="mt-3 text-sm text-muted">
-        {ready ? "Submit when the day is filled in." : "Each note needs at least 13 characters."}
+        {previewing
+          ? "Preview only. Submitting opens at 5 PM."
+          : ready
+            ? "Submit when the day is filled in."
+            : "Each note needs at least 13 characters."}
       </p>
     </div>
   );

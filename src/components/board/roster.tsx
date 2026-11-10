@@ -787,7 +787,10 @@ function CategoryEditor() {
 
 /** Grey until 5 PM. Hovering or clicking early says when it opens. */
 function EndOfDayButton({ shopId }: { shopId: string }) {
-  const [open, setOpen] = useState(() => endOfDayOpen());
+  // Darin and Arun can preview End of Day at any time.
+  const owner = isOwnerViewer(useBoard((state) => state.viewer));
+  const [clockOpen, setOpen] = useState(() => endOfDayOpen());
+  const open = clockOpen || owner;
   const [hint, setHint] = useState(false);
   useEffect(() => {
     const timer = window.setInterval(() => setOpen(endOfDayOpen()), 30_000);
