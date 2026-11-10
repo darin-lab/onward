@@ -37,6 +37,8 @@ export async function sendDayReportMail(data: DayReportMail) {
     const value = data.values[field.key]?.trim() || "—";
     const note = data.notes?.[field.key]?.trim();
     const block = [`${field.label}`, value];
+    const weekSoFar = (data.values as Record<string, string | undefined>)[`${field.key}Wtd`]?.trim();
+    if (weekSoFar) block.push(`Week to date: ${weekSoFar}`);
     if (note) block.push("", "How will you grow that number tomorrow?", note);
     return block.join("\n");
   });
@@ -70,7 +72,12 @@ export async function sendDayReportMail(data: DayReportMail) {
       when,
       rows: DAY_FIELDS.map((field) => ({
         label: field.label,
-        value: data.values[field.key]?.trim() || "—",
+        value: [
+          data.values[field.key]?.trim() || "—",
+          (data.values as Record<string, string | undefined>)[`${field.key}Wtd`]?.trim(),
+        ]
+          .filter(Boolean)
+          .join(" · Week to date "),
         note: data.notes?.[field.key]?.trim() || "",
       })),
       prompts,

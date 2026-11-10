@@ -302,6 +302,29 @@ export const getDayReport = createServerFn({ method: "POST" })
     return rows[0] ? (JSON.parse(rows[0].data) as DayReport) : null;
   });
 
+/** This week's submitted End of Day reports for a shop, before the given day. */
+export const getWeekDayReports = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { shopId?: unknown; start?: unknown; before?: unknown };
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    if (typeof data.shopId !== "string" || typeof data.start !== "string" || typeof data.before !== "string") {
+      throw new Error("Need a shop and dates");
+    }
+    if (!iso.test(data.start) || !iso.test(data.before)) throw new Error("Need dates");
+    return { shopId: data.shopId, start: data.start, before: data.before };
+  })
+  .handler(async ({ data }): Promise<DayReport[]> => {
+    await allowedShop(data.shopId);
+    const sql = await sqlForRecords();
+    const rows = await sql.query<{ data: string }>(
+      "select data from day_reports where shop_id = $1 and day >= $2 and day < $3 order by day",
+      [data.shopId, data.start, data.before],
+    );
+    return rows
+      .map((row) => JSON.parse(row.data) as DayReport)
+      .filter((report) => report.submitted !== false);
+  });
+
 type DayInput = {
   shopId: string;
   date: string;

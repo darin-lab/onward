@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { parseISO } from "date-fns";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   DAY_FIELDS,
@@ -6,6 +7,7 @@ import {
   END_OF_DAY_WAIT,
   endOfDayOpen,
   focusReview,
+  mondayISO,
   shopClock,
   techReviewStage,
   weekRangeLabel,
@@ -14,7 +16,7 @@ import {
   type DayReport,
 } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
-import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
+import { getDayReport, getWeekDayReports, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
 import { refreshCalls, refreshFeedback, refreshWeeks } from "@/lib/board/shared";
 import { FeedbackPopup, type FeedbackFor } from "@/components/board/feedback";
@@ -137,6 +139,33 @@ const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: nu
 
 const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
 
+/** These three also show a week-to-date number, and their note opens only when that is below goal. */
+const WEEKLY = ["productivity", "efficiency", "proficiency"] as const;
+type WeeklyKey = (typeof WEEKLY)[number];
+const isWeekly = (key: DayFieldKey): key is WeeklyKey => (WEEKLY as readonly string[]).includes(key);
+
+/** Hours from each day, added up, then divided, so a short day counts for less. */
+function weekToDate(days: Partial<Record<DayFieldKey, string>>[]): Record<WeeklyKey, string> {
+  const total = (part: DayFieldKey, whole: DayFieldKey) => {
+    let top = 0;
+    let bottom = 0;
+    for (const day of days) {
+      const a = readNumber(day[part]);
+      const b = readNumber(day[whole]);
+      // A day counts only when it has both numbers.
+      if (a == null || b == null) continue;
+      top += a;
+      bottom += b;
+    }
+    return asPercent(bottom ? top : null, bottom || null);
+  };
+  return {
+    productivity: total("workHours", "availableHours"),
+    efficiency: total("billedHours", "serviceHours"),
+    proficiency: total("billedHours", "availableHours"),
+  };
+}
+
 function readNumber(raw: string | undefined) {
   if (!raw?.trim()) return null;
   const value = Number(raw.replace(/[$,%\s,]/g, ""));
@@ -217,6 +246,28 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     };
   }, [shopId, date]);
 
+  const [earlier, setEarlier] = useState<Partial<Record<DayFieldKey, string>>[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    setEarlier([]);
+    const start = mondayISO(parseISO(date));
+    if (start === date) return;
+    void getWeekDayReports({ data: { shopId, start, before: date } })
+      .then((reports) => {
+        if (cancel) return;
+        // Only Monday to Thursday count toward the week.
+        setEarlier(
+          reports
+            .filter((report) => [1, 2, 3, 4].includes(parseISO(report.date).getDay()))
+            .map((report) => report.values),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [shopId, date]);
+
   const submitted = Boolean(saved?.submitted);
   const best = BEST_MONTH[shopId];
   const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
@@ -229,9 +280,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     efficiency,
     proficiency,
   };
-  const notesReady = DAY_FIELDS.every(
-    (field) => !belowGoal(field.key, shown[field.key]) || longEnough(notes[field.key]),
-  );
+  // The work week is Monday to Thursday; a report on another day does not add to it.
+  const workDay = [1, 2, 3, 4].includes(parseISO(date).getDay());
+  const week = weekToDate(workDay ? [...earlier, { ...draft }] : earlier);
+  // Productivity, efficiency and proficiency ask for a note only when the week so far is below goal.
+  const needsNote = (key: DayFieldKey) =>
+    isWeekly(key) ? belowGoal(key, week[key]) : belowGoal(key, shown[key]);
+  const notesReady = DAY_FIELDS.every((field) => !needsNote(field.key) || longEnough(notes[field.key]));
   const promptsReady = DAY_PROMPTS.every((prompt) => longEnough(answers[prompt.key]));
   const ready = notesReady && promptsReady;
 
@@ -392,6 +447,9 @@ export function DayReportForm({ shopId }: { shopId: string }) {
           {DAY_FIELDS.map((field) => {
             const value = shown[field.key] ?? "";
             const low = belowGoal(field.key, value);
+            const wtd = isWeekly(field.key) ? week[field.key] : "";
+            const wtdTone = wtd ? (belowGoal(field.key, wtd) ? "#ff4d4d" : "#3DDC84") : undefined;
+            const ask = needsNote(field.key);
             const entered = ENTERED.includes(field.key);
             const tone =
               GOALS[field.key] && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
@@ -427,7 +485,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                     </span>
                   )}
                 </div>
-                {low ? (
+                {isWeekly(field.key) ? (
+                  <p className="mt-0.5 flex justify-end gap-1.5 pr-2 text-xs tabular-nums text-muted">
+                    <span>Week to date</span>
+                    <span style={{ color: wtdTone }}>{wtd || "—"}</span>
+                  </p>
+                ) : null}
+                {ask ? (
                   <textarea
                     id={`${field.key}-why`}
                     value={notes[field.key] ?? ""}
@@ -438,7 +502,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                     className={cn(fieldClass, "mt-1.5 min-h-16 w-full py-2")}
                   />
                 ) : null}
-                {low && !longEnough(notes[field.key]) ? (
+                {ask && !longEnough(notes[field.key]) ? (
                   <p className="mt-1 text-xs text-muted">13 characters minimum</p>
                 ) : null}
               </li>
@@ -470,7 +534,21 @@ export function DayReportForm({ shopId }: { shopId: string }) {
           if (sending || !ready) return;
           setSending(true);
           setProblem("");
-          void writable(() => submitDayReport({ data: { shopId, date, values: shown, notes, answers } }))
+          void writable(() => submitDayReport({
+              data: {
+                shopId,
+                date,
+                values: {
+                  ...shown,
+                  // Saved with the report so the email and later views show the week so far.
+                  ...Object.fromEntries(WEEKLY.map((key) => [`${key}Wtd`, week[key]])),
+                },
+                notes: Object.fromEntries(
+                  Object.entries(notes).filter(([key]) => needsNote(key as DayFieldKey)),
+                ),
+                answers,
+              },
+            }))
             .then((result) => {
               if (!result.mailed) {
                 setSending(false);
