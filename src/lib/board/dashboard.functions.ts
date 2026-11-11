@@ -27,8 +27,8 @@ export type ShopPull = {
     billedHours: number | null;
     cars: number | null;
   };
-  /** Productivity, efficiency and proficiency for the whole range, as the dashboard works them out. */
-  rates: { productivity: string; efficiency: string; proficiency: string };
+  /** Proficiency, ELR, SPBH and hours per day for the whole range, as the dashboard works them out. */
+  rates: { proficiency: string; elr: string; spbh: string; hoursPerDay: string };
 };
 
 function round(value: number, places = 2) {
@@ -95,13 +95,14 @@ export function readShop(rows: Row[], shop: string): ShopPull {
   if (cars != null) put("carCount", String(round(cars, 0)));
   if (cc != null) put("creditCardPayments", money(cc));
   if (cash != null) put("cashCheckPayments", money(cash));
-  const rate = (key: string) => {
-    const value = valueOf(rows, key, shop);
-    return value == null ? "" : percent(value);
-  };
   return {
     fields,
-    rates: { productivity: rate("productivity"), efficiency: rate("efficiency"), proficiency: rate("proficiency") },
+    rates: {
+      proficiency: proficiency == null ? "" : percent(proficiency),
+      elr: elr == null ? "" : money(elr),
+      spbh: spbh == null ? "" : money(spbh),
+      hoursPerDay: hpd == null ? "" : String(round(hpd)),
+    },
     week: {
       totalSales: sales == null ? null : round(sales),
       sellThrough: sellthrough == null ? null : round(sellthrough * 100, 1),

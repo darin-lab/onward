@@ -207,8 +207,8 @@ function AboutTip({ id, label, text }: { id: string; label: string; text: string
   );
 }
 
-/** These three also show a week-to-date number from the dashboard, and their note opens only when that is below goal. */
-const WEEKLY = ["productivity", "efficiency", "proficiency"] as const;
+/** These four also show a week-to-date number from the dashboard, and their note opens only when that is below goal. */
+const WEEKLY = ["proficiency", "elr", "spbh", "hoursPerDay"] as const;
 type WeeklyKey = (typeof WEEKLY)[number];
 const isWeekly = (key: DayFieldKey): key is WeeklyKey => (WEEKLY as readonly string[]).includes(key);
 
@@ -331,7 +331,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   const week = Object.fromEntries(
     WEEKLY.map((key) => [key, (submitted && savedWeek(key)) || dashWeek[key] || ""]),
   ) as Record<WeeklyKey, string>;
-  // Productivity, efficiency and proficiency ask for a note only when the week so far is below goal.
+  // Proficiency, ELR, SPBH and hours per day ask for a note only when the week so far is below goal.
   const needsNote = (key: DayFieldKey) =>
     isWeekly(key) ? belowGoal(key, week[key]) : belowGoal(key, shown[key]);
   const notesReady = DAY_FIELDS.every((field) => !needsNote(field.key) || longEnough(notes[field.key]));
