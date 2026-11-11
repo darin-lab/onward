@@ -119,7 +119,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   const sound = useChat((s) => s.sound);
   const me = boot.me;
   const owner = me.role === "owner";
-  const people = boot.people.filter((p) => p.id !== me.personId);
+  const people = boot.people;
   const mine = (r: ChatRoomInfo) => r.members.includes(me.personId);
   const channels = rooms.filter((r) => r.kind === "channel");
   const groups = rooms.filter((r) => r.kind === "group" && mine(r));
@@ -150,24 +150,27 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
       {body}
     </section>
   );
-  const personRow = (p: ChatPerson) => (
-    <button key={p.id} type="button" onClick={() => void openDm(p.id)}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-raised">
-      <Avatar person={p} size={28} />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm text-ink">{p.name}</span>
-          <Dot id={p.id} />
-          {presence[p.id]?.away ? <PostIt text={presence[p.id].away} /> : null}
+  const personRow = (p: ChatPerson) => {
+    const self = p.id === me.personId;
+    return (
+      <button key={p.id} type="button" disabled={self} onClick={() => void openDm(p.id)}
+        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${self ? "cursor-default" : "hover:bg-raised"}`}>
+        <Avatar person={p} size={28} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm text-ink">{p.name}{self ? " (you)" : ""}</span>
+            <Dot id={p.id} />
+            {presence[p.id]?.away ? <PostIt text={presence[p.id].away} /> : null}
+          </span>
+          <span className="block truncate text-[11px] text-muted">
+            {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
+              ? statusLabel[presence[p.id].state]
+              : p.title}
+          </span>
         </span>
-        <span className="block truncate text-[11px] text-muted">
-          {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
-            ? statusLabel[presence[p.id].state]
-            : p.title}
-        </span>
-      </span>
-    </button>
-  );
+      </button>
+    );
+  };
   const folder = (label: string, list: ChatPerson[], fixed = false) => (
     <PeopleFolder key={label} label={label} list={fixed ? list : sorted(list)} render={personRow} />
   );
