@@ -207,7 +207,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         : null}
       </div>
       <p className="border-t border-white/10 px-3 py-2 text-[11px] text-muted">
-        Messages are company records and may be reviewed by Darin and Arun.
+        Driven Chat is a company tool. Messages are kept on file and may be reviewed if needed.
       </p>
     </>
   );
