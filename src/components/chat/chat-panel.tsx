@@ -244,16 +244,30 @@ function AwayInput({ value }: { value: string }) {
 
 function ProfilePicture() {
   const boot = useChat((s) => s.boot)!;
+  const has = useChat((s) => Boolean(s.avatars[boot.me.personId]));
   const me = boot.people.find((p) => p.id === boot.me.personId);
   const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const pick = (f?: File) => {
+    if (!f) return;
+    setBusy(true);
+    void saveAvatar(f).finally(() => setBusy(false));
+  };
   return (
-    <>
-      <button type="button" onClick={() => input.current?.click()} title="Change your picture">
+    <div className="flex w-14 shrink-0 flex-col items-center gap-0.5">
+      <button type="button" onClick={() => input.current?.click()} title="Change your picture" className="relative">
         <Avatar person={me} size={40} />
+        <span className="absolute -bottom-1 -right-1 rounded-full bg-raised px-1 text-[10px] leading-4 text-ink">{busy ? "…" : "✎"}</span>
       </button>
+      <button type="button" onClick={() => input.current?.click()} className="text-[10px] text-muted underline-offset-2 hover:underline">
+        {has ? "Change" : "Add photo"}
+      </button>
+      {has ? (
+        <button type="button" onClick={() => void saveAvatar(null)} className="text-[10px] text-muted underline-offset-2 hover:underline">Remove</button>
+      ) : null}
       <input ref={input} type="file" accept="image/*" hidden
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) void saveAvatar(f); e.target.value = ""; }} />
-    </>
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+    </div>
   );
 }
 
