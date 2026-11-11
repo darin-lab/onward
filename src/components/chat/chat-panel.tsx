@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, startChat, stopChat, setOpen, openRoom, openDm, createRoom, sendMessage, deleteMessage,
-  noteTyping, muteRoom, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
+  noteTyping, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
 import { chatKeepPhoto, chatPhoto, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
 import { useBoard } from "@/lib/board/store";
 import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
@@ -105,7 +105,7 @@ function Header({ title, onBack, right }: { title: string; onBack?: () => void; 
   return (
     <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3">
       {onBack ? <button type="button" onClick={onBack} className="px-2 text-lg text-muted hover:text-ink" aria-label="Back">‹</button> : null}
-      <h2 className="min-w-0 flex-1 truncate font-display text-lg uppercase italic text-ink">{title}</h2>
+      <h2 className="min-w-0 flex-1 truncate pr-3 font-display text-lg uppercase italic text-ink">{title}</h2>
       {right}
       <button type="button" onClick={() => setOpen(false)} className="px-2 text-lg text-muted hover:text-ink" aria-label="Close chat">✕</button>
     </div>
@@ -142,7 +142,6 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
     <button key={r.id} type="button" onClick={() => void openRoom(r.id)}
       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-raised">
       <span className="min-w-0 flex-1 truncate text-ink">{prefix}{roomTitle(r, me.personId, boot.people)}</span>
-      {r.muted ? <span className="text-[10px] text-muted">muted</span> : null}
       {r.unread > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">{r.unread}</span> : null}
     </button>
   );
@@ -182,7 +181,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
     <>
       <Header title="Driven Chat" right={
         <>
-          <button type="button" onClick={onNew} className="rounded-sm border border-white/15 px-2 py-1 text-xs text-ink hover:bg-raised">+ New</button>
+          <button type="button" onClick={onNew} className="shrink-0 rounded-sm border border-white/15 px-2 py-1 text-xs text-ink hover:bg-raised">+ New</button>
           {owner ? <button type="button" onClick={onSettings} className="px-2 text-sm text-muted hover:text-ink" aria-label="Chat settings">⚙</button> : null}
         </>
       } />
@@ -358,8 +357,7 @@ function RoomView() {
   };
   return (
     <>
-      <Header title={(room.kind === "channel" ? "# " : "") + title} onBack={() => void openRoom(null)}
-        right={<button type="button" className="text-xs text-muted hover:text-ink" onClick={() => void muteRoom(room.id, !room.muted)}>{room.muted ? "Unmute" : "Mute"}</button>} />
+      <Header title={(room.kind === "channel" ? "# " : "") + title} onBack={() => void openRoom(null)} />
       {room.id === "all-managers" && meetUrl ? (
         <a href={meetUrl} target="_blank" rel="noreferrer" className="block bg-honey px-3 py-2 text-center text-sm font-semibold text-white">Join meeting</a>
       ) : null}

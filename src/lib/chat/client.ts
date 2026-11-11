@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import {
   chatAway, chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
-  chatRead, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
+  chatRead, chatSend, chatSetAvatar, chatStatus, chatTyping,
 } from "@/lib/chat/chat.functions";
 import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
 
@@ -245,11 +245,6 @@ export function noteTyping() {
   if (!roomId || Date.now() - lastTyping < 3000) return;
   lastTyping = Date.now();
   void chatTyping({ data: { roomId } });
-}
-
-export async function muteRoom(roomId: string, muted: boolean) {
-  await chatMute({ data: { roomId, muted } });
-  await poll();
 }
 
 export async function setAway(message: string) {
