@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   DAY_FIELDS,
@@ -17,7 +17,7 @@ import {
   type DayReport,
 } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
-import { getDayReport, getWeekDayReports, submitDayReport } from "@/lib/board/records.functions";
+import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
 import { refreshCalls, refreshFeedback, refreshWeeks } from "@/lib/board/shared";
 import { FeedbackPopup, type FeedbackFor } from "@/components/board/feedback";
@@ -207,32 +207,10 @@ function AboutTip({ id, label, text }: { id: string; label: string; text: string
   );
 }
 
-/** These three also show a week-to-date number, and their note opens only when that is below goal. */
+/** These three also show a week-to-date number from the dashboard, and their note opens only when that is below goal. */
 const WEEKLY = ["productivity", "efficiency", "proficiency"] as const;
 type WeeklyKey = (typeof WEEKLY)[number];
 const isWeekly = (key: DayFieldKey): key is WeeklyKey => (WEEKLY as readonly string[]).includes(key);
-
-/** Hours from each day, added up, then divided, so a short day counts for less. */
-function weekToDate(days: Partial<Record<DayFieldKey, string>>[]): Record<WeeklyKey, string> {
-  const total = (part: DayFieldKey, whole: DayFieldKey) => {
-    let top = 0;
-    let bottom = 0;
-    for (const day of days) {
-      const a = readNumber(day[part]);
-      const b = readNumber(day[whole]);
-      // A day counts only when it has both numbers.
-      if (a == null || b == null) continue;
-      top += a;
-      bottom += b;
-    }
-    return asPercent(bottom ? top : null, bottom || null);
-  };
-  return {
-    productivity: total("workHours", "availableHours"),
-    efficiency: total("billedHours", "serviceHours"),
-    proficiency: total("billedHours", "availableHours"),
-  };
-}
 
 function readNumber(raw: string | undefined) {
   if (!raw?.trim()) return null;
@@ -317,21 +295,18 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     };
   }, [shopId, date]);
 
-  const [earlier, setEarlier] = useState<Partial<Record<DayFieldKey, string>>[]>([]);
+  // Week to date comes straight from the dashboard: Monday through this day.
+  // The work week is Monday to Thursday, so a report on Friday to Sunday shows Monday to Thursday.
+  const [dashWeek, setDashWeek] = useState<Partial<Record<WeeklyKey, string>>>({});
   useEffect(() => {
     let cancel = false;
-    setEarlier([]);
-    const start = mondayISO(parseISO(date));
-    if (start === date) return;
-    void getWeekDayReports({ data: { shopId, start, before: date } })
-      .then((reports) => {
-        if (cancel) return;
-        // Only Monday to Thursday count toward the week.
-        setEarlier(
-          reports
-            .filter((report) => [1, 2, 3, 4].includes(parseISO(report.date).getDay()))
-            .map((report) => report.values),
-        );
+    setDashWeek({});
+    const day = parseISO(date);
+    const start = mondayISO(day);
+    const end = [1, 2, 3, 4].includes(day.getDay()) ? date : format(addDays(parseISO(start), 3), "yyyy-MM-dd");
+    void pullShopRange({ data: { shopId, start, end } })
+      .then((result) => {
+        if (!cancel && result.ok) setDashWeek(result.rates);
       })
       .catch(() => undefined);
     return () => {
@@ -351,9 +326,11 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     efficiency,
     proficiency,
   };
-  // The work week is Monday to Thursday; a report on another day does not add to it.
-  const workDay = [1, 2, 3, 4].includes(parseISO(date).getDay());
-  const week = weekToDate(workDay ? [...earlier, { ...draft }] : earlier);
+  // A sent report keeps the week-to-date numbers it was sent with.
+  const savedWeek = (key: WeeklyKey) => (draft as Record<string, string | undefined>)[`${key}Wtd`]?.trim() ?? "";
+  const week = Object.fromEntries(
+    WEEKLY.map((key) => [key, (submitted && savedWeek(key)) || dashWeek[key] || ""]),
+  ) as Record<WeeklyKey, string>;
   // Productivity, efficiency and proficiency ask for a note only when the week so far is below goal.
   const needsNote = (key: DayFieldKey) =>
     isWeekly(key) ? belowGoal(key, week[key]) : belowGoal(key, shown[key]);
