@@ -341,7 +341,8 @@ export const chatMute = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { requireChat } = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await requireChat();
-    await sql.query("update chat_members set muted = $3 where room_id = $1 and person_id = $2", [
+    // A person (direct message) can never be muted; only channels and group chats.
+    await sql.query("update chat_members set muted = $3 where room_id = $1 and person_id = $2 and room_id in (select id from chat_rooms where kind <> 'dm')", [
       data.roomId,
       viewer.personId,
       data.muted,
