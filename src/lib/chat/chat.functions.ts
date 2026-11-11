@@ -122,6 +122,24 @@ export const chatSend = createServerFn({ method: "POST" })
       [room.id, viewer.personId, id],
     );
     await sql.query("update chat_presence set typing_room = null where person_id = $1", [viewer.personId]);
+    // Like AIM: messaging someone who is away gets their away message back, once per message text.
+    if (room.kind === "dm") {
+      const other = room.members.find((m) => m !== viewer.personId);
+      if (other) {
+        const away = await sql.query<{ away_message: string | null }>(
+          "select away_message from chat_presence where person_id = $1", [other]);
+        const note = away[0]?.away_message?.trim();
+        if (note) {
+          const text = `Auto-response: ${note}`;
+          const last = await sql.query<{ body: string }>(
+            "select body from chat_messages where room_id = $1 and author_id = $2 and body like 'Auto-response:%' order by id desc limit 1",
+            [room.id, other]);
+          if (last[0]?.body !== text) {
+            await sql.query("insert into chat_messages (room_id, author_id, body) values ($1, $2, $3)", [room.id, other, text]);
+          }
+        }
+      }
+    }
     const people = await s.loadDirectory(sql);
     await s.pushToRoom(
       sql,

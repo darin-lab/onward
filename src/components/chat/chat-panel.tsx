@@ -25,6 +25,18 @@ function Avatar({ person, size = 32 }: { person?: ChatPerson; size?: number }) {
   );
 }
 
+/** The little yellow sticky note that means "this person left an away message". */
+function PostIt({ text }: { text: string }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" role="img" aria-label={`Away message: ${text}`} className="shrink-0">
+      <title>{text}</title>
+      <path d="M2 2h12v8l-4 4H2z" fill="#facc15" stroke="#ca8a04" strokeWidth="0.8" />
+      <path d="M10 14v-4h4" fill="#eab308" stroke="#ca8a04" strokeWidth="0.8" />
+      <path d="M4.5 5.5h7M4.5 8h4" stroke="#a16207" strokeWidth="0.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function Dot({ id }: { id: string }) {
   const state = useChat((s) => s.presence[id]?.state ?? "offline");
   return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dot[state]}`} title={statusLabel[state]} />;
@@ -146,13 +158,12 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         <span className="flex items-center gap-1.5">
           <span className="truncate text-sm text-ink">{p.name}</span>
           <Dot id={p.id} />
+          {presence[p.id]?.away ? <PostIt text={presence[p.id].away} /> : null}
         </span>
         <span className="block truncate text-[11px] text-muted">
-          {presence[p.id]?.away
-            ? presence[p.id].away
-            : presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
-              ? statusLabel[presence[p.id].state]
-              : p.title}
+          {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
+            ? statusLabel[presence[p.id].state]
+            : p.title}
         </span>
       </span>
     </button>
@@ -351,7 +362,7 @@ function RoomView() {
                       <p className="text-[11px] italic text-muted">Deleted by {person(m.deletedBy ?? "")?.name ?? m.deletedBy}, {m.deletedAt ? time(m.deletedAt) : ""}</p>
                     </>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm text-ink">{m.body}</p>
+                    <p className={`whitespace-pre-wrap break-words text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`}>{m.body}</p>
                   )}
                   {!m.deleted ? <Photo m={m} owner={owner} /> : null}
                   {!m.deleted && (mineMsg || owner) ? (
