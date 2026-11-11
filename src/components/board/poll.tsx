@@ -209,7 +209,7 @@ export function standingFor(techs: Tech[], weeks: Parameters<typeof companyPoll>
 }
 
 /** Each shop's weekly sales goal. */
-const WEEK_SALES_GOAL = 24000;
+const WEEK_SALES_GOAL = 32000;
 
 type WeekNumbers = { start: string; sales: Record<string, number>; cars: Record<string, number> };
 
