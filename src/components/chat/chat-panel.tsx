@@ -6,7 +6,7 @@ import { useBoard } from "@/lib/board/store";
 import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
 
 const dot: Record<ChatState, string> = {
-  online: "bg-green-500", under_car: "bg-amber-400", with_client: "bg-sky-400", offline: "bg-neutral-600",
+  online: "bg-green-500", under_car: "bg-sky-400", with_client: "bg-amber-400", offline: "bg-neutral-600",
 };
 const statusLabel: Record<ChatState, string> = {
   online: "Online", offline: "Offline", under_car: "Under a Car", with_client: "With a Client",
@@ -30,9 +30,9 @@ function PostIt({ text }: { text: string }) {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" role="img" aria-label={`Away message: ${text}`} className="shrink-0">
       <title>{text}</title>
-      <path d="M2 2h12v8l-4 4H2z" fill="#facc15" stroke="#ca8a04" strokeWidth="0.8" />
-      <path d="M10 14v-4h4" fill="#eab308" stroke="#ca8a04" strokeWidth="0.8" />
-      <path d="M4.5 5.5h7M4.5 8h4" stroke="#a16207" strokeWidth="0.9" strokeLinecap="round" />
+      <path d="M2 2h12v8l-4 4H2z" fill="#fef08a" stroke="#eab308" strokeWidth="0.8" />
+      <path d="M10 14v-4h4" fill="#fde047" stroke="#eab308" strokeWidth="0.8" />
+      <path d="M4.5 5.5h7M4.5 8h4" stroke="#ca8a04" strokeWidth="0.9" strokeLinecap="round" />
     </svg>
   );
 }
