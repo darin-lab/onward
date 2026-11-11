@@ -38,7 +38,8 @@ export const chatStatus = createServerFn({ method: "GET" }).handler(async (): Pr
 export const chatBootstrap = createServerFn({ method: "GET" }).handler(async (): Promise<ChatBootstrap> => {
   const s = await import("@/lib/chat/chat.server");
   const { viewer, sql } = await s.requireChat();
-  await s.touchPresence(sql, viewer.personId);
+  await s.sweepIfDue(sql);
+  await s.signInForToday(sql, viewer.personId);
   await s.cleanupPhotos(sql);
   const people = await s.loadDirectory(sql);
   const me = people.find((p) => p.id === viewer.personId);
@@ -67,6 +68,7 @@ export const chatPoll = createServerFn({ method: "POST" })
     const s = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await s.requireChat();
     await s.touchPresence(sql, viewer.personId);
+    await s.sweepIfDue(sql);
     const rooms = await s.buildRooms(sql, viewer);
     let messages: ChatMessageInfo[] = [];
     let changed: ChatMessageInfo[] = [];
@@ -225,8 +227,10 @@ export const chatPresence = createServerFn({ method: "POST" })
     const { requireChat } = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await requireChat();
     await sql.query(
-      `insert into chat_presence (person_id, status, away_message, last_seen) values ($1, $2, null, now())
-       on conflict (person_id) do update set status = $2, away_message = null, last_seen = now()`,
+      `insert into chat_presence (person_id, status, signed_in_day, last_seen)
+       values ($1, $2, (now() at time zone 'America/Los_Angeles')::date, now())
+       on conflict (person_id) do update set status = $2,
+         signed_in_day = (now() at time zone 'America/Los_Angeles')::date, last_seen = now()`,
       [viewer.personId, data.status],
     );
     return { ok: true as const };

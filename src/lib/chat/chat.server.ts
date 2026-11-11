@@ -207,23 +207,65 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
 }
 
 export async function buildPresence(sql: Sql): Promise<ChatPresence> {
-  const rows = await sql.query<{ person_id: string; status: string; fresh: boolean }>(
-    `select person_id, status, (last_seen > now() - interval '3 minutes') as fresh from chat_presence`,
+  const rows = await sql.query<{ person_id: string; status: string }>(
+    "select person_id, status from chat_presence",
   );
   const out: ChatPresence = {};
   for (const row of rows) {
-    // Someone who closed the app shows offline; otherwise the status they picked.
-    const picked = row.status === "under_car" || row.status === "with_client" ? row.status : row.status === "offline" ? "offline" : "online";
-    out[row.person_id] = { state: row.fresh ? picked : "offline" };
+    out[row.person_id] = {
+      state: row.status === "under_car" || row.status === "with_client" || row.status === "offline" ? row.status : "online",
+    };
   }
   return out;
 }
 
+/**
+ * Called on every poll. It only writes when the last note is over 10 minutes old,
+ * so presence costs almost nothing; the 7pm sweep uses it to tell who is still around.
+ */
 export async function touchPresence(sql: Sql, personId: string) {
   await sql.query(
     `insert into chat_presence (person_id, last_seen) values ($1, now())
-     on conflict (person_id) do update set last_seen = now()`,
+     on conflict (person_id) do update set last_seen = now()
+       where chat_presence.last_seen < now() - interval '10 minutes'`,
     [personId],
+  );
+}
+
+/** First login of the day (Pacific) marks the person Online; later opens keep what they chose. */
+export async function signInForToday(sql: Sql, personId: string) {
+  await sql.query(
+    `insert into chat_presence (person_id, status, signed_in_day, last_seen)
+     values ($1, 'online', (now() at time zone 'America/Los_Angeles')::date, now())
+     on conflict (person_id) do update set
+       status = case when chat_presence.signed_in_day is distinct from excluded.signed_in_day
+                     then 'online' else chat_presence.status end,
+       signed_in_day = excluded.signed_in_day,
+       last_seen = now()`,
+    [personId],
+  );
+}
+
+/**
+ * The 7pm check. Runs once after each 7pm Pacific, triggered by whoever next uses chat:
+ * anyone who is not an active user (no sign of life in 30 minutes) goes offline and will
+ * be signed in again at their next login.
+ */
+export async function sweepIfDue(sql: Sql) {
+  const rows = await sql.query<{ due: boolean }>(
+    `with b as (
+       select ((case when (now() at time zone 'America/Los_Angeles')::time >= time '19:00'
+                     then date_trunc('day', now() at time zone 'America/Los_Angeles')
+                     else date_trunc('day', now() at time zone 'America/Los_Angeles') - interval '1 day' end)
+               + interval '19 hours') at time zone 'America/Los_Angeles' as ts)
+     select coalesce((select value::timestamptz from chat_settings where key = 'last_sweep'), 'epoch'::timestamptz)
+            < (select ts from b) as due`,
+  );
+  if (!rows[0]?.due) return;
+  await setSetting(sql, "last_sweep", new Date().toISOString());
+  await sql.query(
+    `update chat_presence set status = 'offline', signed_in_day = null
+      where status <> 'offline' and last_seen < now() - interval '30 minutes'`,
   );
 }
 
