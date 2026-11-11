@@ -155,9 +155,11 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
       </span>
     </button>
   );
-  const folder = (label: string, list: ChatPerson[]) => (
-    <PeopleFolder key={label} label={label} list={sorted(list)} render={personRow} />
+  const folder = (label: string, list: ChatPerson[], fixed = false) => (
+    <PeopleFolder key={label} label={label} list={fixed ? list : sorted(list)} render={personRow} />
   );
+  // Management keeps a set order (Arun, then Darin) whatever their status.
+  const management = ["arun", "darin"].map((id) => owners.find((p) => p.id === id)).filter((p): p is ChatPerson => Boolean(p));
   return (
     <>
       <Header title="Driven Chat" right={
@@ -185,7 +187,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         {group("Channels", channels.map((r) => roomRow(r, "# ")))}
         {groups.length ? group("Group chats", groups.map((r) => roomRow(r))) : null}
         {dms.length ? group("Recent direct messages", dms.map((r) => roomRow(r))) : null}
-        {folder("Management", owners)}
+        {folder("Management", management, true)}
         {shops.map(([shop, list]) => folder(shop, list))}
         {owner && others.length ? group("All conversations (read-only)", others.map((r) => roomRow(r)))
         : null}
