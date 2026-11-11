@@ -6,7 +6,7 @@ import { useBoard } from "@/lib/board/store";
 import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
 
 const dot: Record<ChatState, string> = {
-  online: "bg-green-500", under_car: "bg-sky-400", with_client: "bg-amber-400", offline: "bg-neutral-600",
+  online: "bg-green-500", under_car: "bg-sky-400", with_client: "bg-purple-500", offline: "bg-neutral-600",
 };
 const statusLabel: Record<ChatState, string> = {
   online: "Online", offline: "Offline", under_car: "Under a Car", with_client: "With a Client",
