@@ -150,7 +150,7 @@ const ABOUT: Partial<Record<DayFieldKey, string>> = {
   efficiency:
     "Billed hours ÷ service hours. How the hours we billed compare with the time spent doing the work. Over 100% means the work got done faster than it was billed. Goal: 100–150%.",
   proficiency:
-    "Billed hours ÷ available hours. How many billed hours we got out of the techs' available time. It's productivity and efficiency together. Goal: 100%.",
+    "Billed hours ÷ available hours. How many billed hours we got out of the techs' available time. Goal: 100%.",
   hoursPerDay: "Billed hours for the day. Goal: 20.",
   billedHours: "Billed hours: the labor hours billed on all jobs that closed today.",
   workHours: "Work hours: the actual time clocked in Shop-Ware that a technician spent on any job today.",
