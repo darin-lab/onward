@@ -50,7 +50,7 @@ export type ChatMessageInfo = {
 
 export type ChatState = "online" | "offline" | "under_car" | "with_client";
 
-export type ChatPresence = Record<string, { state: ChatState }>;
+export type ChatPresence = Record<string, { state: ChatState; away: string }>;
 
 export type ChatSettings = {
   meetUrl: string;

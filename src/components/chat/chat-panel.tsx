@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, startChat, stopChat, setOpen, openRoom, openDm, createRoom, sendMessage, deleteMessage,
-  noteTyping, muteRoom, setStatus, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
+  noteTyping, muteRoom, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
 import { chatKeepPhoto, chatPhoto, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
 import { useBoard } from "@/lib/board/store";
 import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
@@ -148,9 +148,11 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
           <Dot id={p.id} />
         </span>
         <span className="block truncate text-[11px] text-muted">
-          {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
-            ? statusLabel[presence[p.id].state]
-            : p.title}
+          {presence[p.id]?.away
+            ? presence[p.id].away
+            : presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
+              ? statusLabel[presence[p.id].state]
+              : p.title}
         </span>
       </span>
     </button>
@@ -179,6 +181,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
             <option value="with_client">With a Client</option>
             <option value="offline">Offline</option>
           </select>
+          <AwayInput value={presence[me.personId]?.away ?? ""} />
         </div>
         <button type="button" onClick={() => setSound(!sound)} className="text-xs text-muted hover:text-ink">{sound ? "Sound on" : "Sound off"}</button>
       </div>
@@ -213,6 +216,18 @@ function PeopleFolder({ label, list, render }: { label: string; list: ChatPerson
       </button>
       {open ? list.map(render) : null}
     </section>
+  );
+}
+
+function AwayInput({ value }: { value: string }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => { if (text.trim() !== value) void setAway(text); };
+  return (
+    <input value={text} maxLength={80} placeholder="Away message (optional)" aria-label="Away message"
+      onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className="mt-1 w-full rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-xs text-ink" />
   );
 }
 

@@ -207,13 +207,14 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
 }
 
 export async function buildPresence(sql: Sql): Promise<ChatPresence> {
-  const rows = await sql.query<{ person_id: string; status: string }>(
-    "select person_id, status from chat_presence",
+  const rows = await sql.query<{ person_id: string; status: string; away_message: string | null }>(
+    "select person_id, status, away_message from chat_presence",
   );
   const out: ChatPresence = {};
   for (const row of rows) {
     out[row.person_id] = {
       state: row.status === "under_car" || row.status === "with_client" || row.status === "offline" ? row.status : "online",
+      away: row.away_message ?? "",
     };
   }
   return out;
@@ -240,6 +241,8 @@ export async function signInForToday(sql: Sql, personId: string) {
      on conflict (person_id) do update set
        status = case when chat_presence.signed_in_day is distinct from excluded.signed_in_day
                      then 'online' else chat_presence.status end,
+       away_message = case when chat_presence.signed_in_day is distinct from excluded.signed_in_day
+                     then null else chat_presence.away_message end,
        signed_in_day = excluded.signed_in_day,
        last_seen = now()`,
     [personId],
@@ -264,7 +267,7 @@ export async function sweepIfDue(sql: Sql) {
   if (!rows[0]?.due) return;
   await setSetting(sql, "last_sweep", new Date().toISOString());
   await sql.query(
-    `update chat_presence set status = 'offline', signed_in_day = null
+    `update chat_presence set status = 'offline', signed_in_day = null, away_message = null
       where status <> 'offline' and last_seen < now() - interval '30 minutes'`,
   );
 }

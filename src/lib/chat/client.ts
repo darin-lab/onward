@@ -1,7 +1,7 @@
 // Browser side of Driven Chat: one store, adaptive polling, sounds, push.
 import { create } from "zustand";
 import {
-  chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
+  chatAway, chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
   chatRead, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
 } from "@/lib/chat/chat.functions";
 import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
@@ -252,9 +252,16 @@ export async function muteRoom(roomId: string, muted: boolean) {
   await poll();
 }
 
+export async function setAway(message: string) {
+  const me = get().boot?.me.personId;
+  const away = message.trim().slice(0, 80);
+  if (me) set({ presence: { ...get().presence, [me]: { state: get().presence[me]?.state ?? "online", away } } });
+  await chatAway({ data: { away } });
+}
+
 export async function setStatus(status: ChatState) {
   const me = get().boot?.me.personId;
-  if (me) set({ presence: { ...get().presence, [me]: { state: status } } });
+  if (me) set({ presence: { ...get().presence, [me]: { state: status, away: get().presence[me]?.away ?? "" } } });
   await chatPresence({ data: { status } });
 }
 

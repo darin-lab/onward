@@ -236,6 +236,19 @@ export const chatPresence = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const chatAway = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ away: str((input as { away?: unknown })?.away, 80).trim() }))
+  .handler(async ({ data }) => {
+    const { requireChat } = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await requireChat();
+    await sql.query(
+      `insert into chat_presence (person_id, away_message, last_seen) values ($1, $2, now())
+       on conflict (person_id) do update set away_message = $2, last_seen = now()`,
+      [viewer.personId, data.away || null],
+    );
+    return { ok: true as const };
+  });
+
 export const chatTyping = createServerFn({ method: "POST" })
   .validator((input: unknown) => ({ roomId: str((input as { roomId?: unknown })?.roomId, 200) }))
   .handler(async ({ data }) => {
