@@ -134,6 +134,8 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [people]);
+  // Each shop lists its manager first, then technicians in roster order, whatever their status.
+  const byRole = (list: ChatPerson[]) => [...list.filter((p) => p.role === "manager"), ...list.filter((p) => p.role !== "manager")];
   const rank = (id: string) => ((presence[id]?.state ?? "offline") === "offline" ? 2 : presence[id]?.state === "online" ? 0 : 1);
   const sorted = (list: ChatPerson[]) => [...list].sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name));
   const roomRow = (r: ChatRoomInfo, prefix = "") => (
@@ -205,7 +207,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         {groups.length ? group("Group chats", groups.map((r) => roomRow(r))) : null}
         {dms.length ? group("Recent direct messages", dms.map((r) => roomRow(r))) : null}
         {folder("Management", management, true)}
-        {shops.map(([shop, list]) => folder(shop, list))}
+        {shops.map(([shop, list]) => folder(shop, byRole(list), true))}
         {owner && others.length ? group("All conversations (read-only)", others.map((r) => roomRow(r)))
         : null}
       </div>
