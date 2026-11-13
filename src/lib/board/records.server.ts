@@ -232,8 +232,7 @@ export function shopToday(now = new Date()) {
 }
 
 /** Who this person still owes feedback this week (Monday on): Darin, Arun, or both. */
-export async function feedbackLeftThisWeek(sql: Sql, personId: string) {
-  const { weekStart } = shopToday();
+export async function feedbackLeftThisWeek(sql: Sql, personId: string, weekStart = shopToday().weekStart) {
   const rows = await sql.query<{ about: string }>(
     "select distinct about from feedback where author_id = $1 and week_start = $2",
     [personId, weekStart],

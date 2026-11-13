@@ -410,13 +410,13 @@ type FeedbackAbout = keyof typeof FEEDBACK_ABOUT;
  */
 export const feedbackStatus = createServerFn({ method: "GET" }).handler(async () => {
   const who = await viewer();
+  // Anyone opening the app (Darin and Arun too) gives the weekly email a chance to go:
+  // on Wednesday once every manager is done, and after Wednesday if it never went out.
+  await sendFeedbackDigest({ backup: false }).catch(() => undefined);
   if (who.role === "owner") return { left: [] as FeedbackAbout[], due: false };
   const sql = await sqlForRecords();
   const { shopToday, feedbackLeftThisWeek } = await import("@/lib/board/records.server");
   const left = await feedbackLeftThisWeek(sql, who.personId);
-  // Wednesday: if everyone already finished earlier in the week, the first
-  // person to open the app sends the weekly email.
-  if (shopToday().wednesday) await sendFeedbackDigest({ backup: false }).catch(() => undefined);
   return { left, due: who.role === "manager" && shopToday().wednesday && left.length > 0 };
 });
 
@@ -453,25 +453,49 @@ export const submitFeedback = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-type FeedbackRow = { id: string; about: string; author_id: string; data: string; created_at: string };
+type FeedbackRow = { id: string; about: string; author_id: string; week_start: string; data: string; created_at: string };
 
 /**
- * One email with every feedback not yet sent, to both Darin and Arun, only on
- * Wednesday (shop time).
- * - backup false: once every manager has sent feedback for both Darin and Arun
- *   this week. On Wednesday that's right after the last one comes in; if they
- *   all finished earlier, it goes when the first person opens the app Wednesday.
+ * One email with every feedback not yet sent, to both Darin and Arun.
+ * - Wednesday (shop time), backup false: once every manager has sent feedback
+ *   for both Darin and Arun this week, right after the last one comes in or
+ *   when the first person opens the app.
  * - backup true: the 9 PM Wednesday run sends whatever came in, naming any
- *   manager who didn't send theirs (out that day, no End of Day).
- * Feedback that arrives after the email (a tech on Friday) waits for the next one.
+ *   manager who didn't send theirs.
+ * - Late: if a week's Wednesday has passed and its email never went out (the
+ *   9 PM run is not reliable), the first person to open the app sends it then,
+ *   with the "Still missing" line.
+ * Feedback that arrives after that week's email went (a tech on Friday) waits for the next one.
  */
 export async function sendFeedbackDigest({ backup }: { backup: boolean }) {
   const sql = await sqlForRecords();
   const { boardPeople, feedbackLeftThisWeek, shopToday } = await import("@/lib/board/records.server");
-  if (!shopToday().wednesday) return { ok: true as const, sent: false };
-  const pending = await sql.query<FeedbackRow>(
-    "select id, about, author_id, data, created_at from feedback where mailed_at is null order by created_at",
+  const today = shopToday();
+  const waiting = await sql.query<FeedbackRow>(
+    "select id, about, author_id, week_start, data, created_at from feedback where mailed_at is null order by created_at",
   );
+  if (waiting.length === 0) return { ok: true as const, sent: false };
+
+  // Which week this email is for. On Wednesday: this week. Otherwise only a
+  // week whose Wednesday has passed and whose email never went out.
+  let weekStart = today.weekStart;
+  let late = false;
+  if (!today.wednesday) {
+    const afterWednesday = ["Thu", "Fri", "Sat", "Sun"].includes(today.weekday);
+    const passed = (week: string) => week < today.weekStart || (week === today.weekStart && afterWednesday);
+    const weeks = [...new Set(waiting.map((row) => row.week_start))].filter(passed).sort();
+    for (const week of weeks) {
+      const went = await sql.query("select 1 from feedback where week_start = $1 and mailed_at is not null limit 1", [week]);
+      if (went.length === 0) {
+        weekStart = week;
+        late = true;
+        break;
+      }
+    }
+    if (!late) return { ok: true as const, sent: false };
+    backup = true;
+  }
+  const pending = waiting.filter((row) => row.week_start <= weekStart);
   if (pending.length === 0) return { ok: true as const, sent: false };
 
   const boardRows = await sql.query<{ data: string }>("select data from board_state where id = $1", ["main"]);
@@ -482,7 +506,7 @@ export async function sendFeedbackDigest({ backup }: { backup: boolean }) {
   );
   const missing: { name: string; shopId: string; left: FeedbackAbout[] }[] = [];
   for (const manager of managers) {
-    const left = await feedbackLeftThisWeek(sql, manager.id);
+    const left = await feedbackLeftThisWeek(sql, manager.id, weekStart);
     if (left.length > 0) missing.push({ name: manager.name, shopId: manager.shopId, left });
   }
   if (!backup && missing.length > 0) return { ok: true as const, sent: false };
@@ -513,7 +537,7 @@ export async function sendFeedbackDigest({ backup }: { backup: boolean }) {
   const { sendFeedbackDigestMail } = await import("@/lib/board/mail-feedback.functions");
   try {
     const result = await sendFeedbackDigestMail({
-      weekStart: shopToday().weekStart,
+      weekStart,
       items,
       missing: missing.map((person) => ({
         name: person.name,
