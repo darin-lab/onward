@@ -262,10 +262,7 @@ function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
 
   return (
     <section>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm text-muted">Shop sales · This week so far ({since} – today)</p>
-        <span className="shrink-0 font-display text-xs tracking-widest text-honey uppercase">Shops</span>
-      </div>
+      <p className="text-sm text-muted">Shop sales · This week so far ({since} – today)</p>
       <ol className="mt-4 space-y-2">
         {rows.map((row, index) => {
           const rank = row.sales != null && row.sales > 0 ? index + 1 : null;
