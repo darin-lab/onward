@@ -17,6 +17,9 @@ import {
   type DayReport,
 } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
+import { checkShopRecords } from "@/lib/board/hof.functions";
+import { momentLine, type RecordMoment } from "@/lib/board/hof";
+import { TrophyMark } from "@/components/board/ui";
 import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
 import { refreshCalls, refreshFeedback, refreshWeeks } from "@/lib/board/shared";
@@ -314,6 +317,22 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     };
   }, [shopId, date]);
 
+  // Shop records: what this shop broke this week or today (never ones from the setup),
+  // and weekly rates running ahead of the record.
+  const [moments, setMoments] = useState<RecordMoment[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    setMoments([]);
+    void checkShopRecords({ data: { shopId, date } })
+      .then((result) => {
+        if (!cancel) setMoments(result.moments);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [shopId, date]);
+
   const submitted = Boolean(saved?.submitted);
   const best = BEST_MONTH[shopId];
   const productivity = asPercent(readNumber(draft.workHours), readNumber(draft.availableHours));
@@ -474,6 +493,35 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         <p className="mt-3 rounded-md bg-raised px-3 py-2 text-sm text-ink shadow-border">
           Preview. Managers can open this at 5 PM; until then the numbers are from earlier in the day.
         </p>
+      ) : null}
+
+      {moments.length > 0 ? (
+        <ul className="mt-6 space-y-3">
+          {moments.map((moment) => (
+            <li
+              key={`${moment.kind}-${moment.metric}`}
+              className={cn(
+                "flex items-start gap-3 rounded-2xl p-4",
+                moment.kind === "new"
+                  ? "bg-[#1f1806] shadow-[inset_0_0_0_2px_#e2b33c]"
+                  : "bg-surface shadow-[inset_0_0_0_1px_#8a6a18]",
+              )}
+            >
+              <TrophyMark className={moment.kind === "new" ? "size-8 shrink-0" : "size-6 shrink-0"} />
+              <span>
+                <span
+                  className={cn(
+                    "block font-display font-semibold uppercase italic",
+                    moment.kind === "new" ? "metal metal-gold text-2xl" : "text-lg text-[#e2b33c]",
+                  )}
+                >
+                  {moment.kind === "new" ? "New shop record" : "On pace for a record"}
+                </span>
+                <span className="mt-1 block text-ink">{momentLine(shop?.name ?? "Shop", moment)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       <Card className="mt-6">

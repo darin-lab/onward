@@ -5,7 +5,7 @@ const API_URL =
   "https://script.google.com/macros/s/AKfycbwdRuQXY6Yqjl0uZw-dhEFWqaEW7kQYOOXtl5sQzLoFcpnKGy46hwMmURGo-Rn3D7QU/exec";
 const PIN = "320320";
 
-const SHOP_NAMES: Record<string, string> = {
+export const SHOP_NAMES: Record<string, string> = {
   fremont: "Fremont",
   campbell: "Campbell",
   "san-ramon": "San Ramon",
@@ -13,7 +13,7 @@ const SHOP_NAMES: Record<string, string> = {
   "castro-valley": "Castro Valley",
 };
 
-type Row = { key: string; values: Record<string, number | null> };
+export type Row = { key: string; values: Record<string, number | null> };
 
 export type ShopPull = {
   fields: Partial<Record<DayFieldKey, string>>;
@@ -48,7 +48,7 @@ function percent(value: number) {
   return `${round(value * 100, 1)}%`;
 }
 
-async function rangeRows(start: string, end: string): Promise<Row[]> {
+export async function rangeRows(start: string, end: string): Promise<Row[]> {
   const first = await fetch(API_URL, {
     method: "POST",
     redirect: "manual",
@@ -63,7 +63,7 @@ async function rangeRows(start: string, end: string): Promise<Row[]> {
   return data.ok.rows;
 }
 
-function valueOf(rows: Row[], key: string, shop: string) {
+export function valueOf(rows: Row[], key: string, shop: string) {
   return asNumber(rows.find((row) => row.key === key)?.values[shop]);
 }
 
@@ -221,7 +221,7 @@ export const pullMonthSales = createServerFn({ method: "GET" })
   });
 
 /** Monday of this week through today, in shop time (Pacific). */
-function pacificWeek(now = new Date()) {
+export function pacificWeek(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles",
     year: "numeric",
@@ -243,6 +243,29 @@ function pacificWeek(now = new Date()) {
 
 type WeekSales = { start: string; end: string; sales: Record<string, number>; cars: Record<string, number> };
 
+/** Shops whose best sales week ever is this week (set after launch, never by the setup). */
+type NewSalesRecords = Record<string, { prevValue: number; prevStart: string }>;
+
+async function newSalesRecords(weekStart: string, rows: Row[] | null): Promise<NewSalesRecords> {
+  try {
+    const { hofSql, applyWeek, settleLastWeek, readRecords } = await import("@/lib/board/hof.server");
+    const sql = await hofSql();
+    if (rows) {
+      await settleLastWeek(sql, weekStart).catch(() => undefined);
+      await applyWeek(sql, weekStart, rows, false);
+    }
+    const found: NewSalesRecords = {};
+    for (const record of await readRecords(sql)) {
+      if (record.metric !== "sales" || record.seeded || record.start !== weekStart) continue;
+      if (record.prevValue == null || !record.prevStart) continue;
+      found[record.shopId] = { prevValue: record.prevValue, prevStart: record.prevStart };
+    }
+    return found;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * This week's sales and car count per shop, Monday through today.
  * { cached: true } answers at once with the last saved copy (or nothing);
@@ -253,14 +276,14 @@ export const pullWeekSales = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { start, end } = pacificWeek();
     const id = `week:${start}`;
-    const empty = { ok: false as const, start, end, sales: {}, cars: {} };
+    const empty = { ok: false as const, start, end, sales: {}, cars: {}, records: {} as NewSalesRecords };
     if (data.cached) {
       try {
         const sql = await cacheSql();
         const rows = await sql.query<{ data: string }>("select data from dashboard_cache where id = $1", [id]);
         if (!rows[0]) return empty;
         const saved = JSON.parse(rows[0].data) as WeekSales;
-        return { ok: true as const, ...saved, start };
+        return { ok: true as const, ...saved, start, records: await newSalesRecords(start, null) };
       } catch {
         return empty;
       }
@@ -286,7 +309,7 @@ export const pullWeekSales = createServerFn({ method: "GET" })
       } catch {
         // The page still gets the fresh numbers.
       }
-      return { ok: true as const, ...fresh };
+      return { ok: true as const, ...fresh, records: await newSalesRecords(start, rows) };
     } catch {
       return empty;
     }

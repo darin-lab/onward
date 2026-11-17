@@ -16,6 +16,7 @@ import {
 } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { cn } from "@/lib/cn";
+import { TrophyMark } from "@/components/board/ui";
 
 export function CompanyPoll({
   highlightId,
@@ -38,7 +39,18 @@ export function CompanyPoll({
 
   return (
     <section className="mt-10">
-      <h2 className="text-2xl">Leaderboard</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl">Leaderboard</h2>
+        {highlightId ? null : (
+          <Link
+            to="/hall-of-fame"
+            className="inline-flex min-h-11 items-center gap-2 font-display text-lg tracking-wide text-[#e2b33c] uppercase italic"
+          >
+            <TrophyMark className="size-5" />
+            Hall of Fame →
+          </Link>
+        )}
+      </div>
       <div className="mt-4 grid gap-8 sm:grid-cols-2">
       {highlightId ? null : <ShopWeekBoard shops={shops} />}
       <Board
@@ -211,7 +223,12 @@ export function standingFor(techs: Tech[], weeks: Parameters<typeof companyPoll>
 /** Each shop's weekly sales goal. */
 const WEEK_SALES_GOAL = 32000;
 
-type WeekNumbers = { start: string; sales: Record<string, number>; cars: Record<string, number> };
+type WeekNumbers = {
+  start: string;
+  sales: Record<string, number>;
+  cars: Record<string, number>;
+  records?: Record<string, { prevValue: number; prevStart: string }>;
+};
 
 /** Shops ranked by sales from Monday through today, from the dashboard, against the weekly goal. */
 function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
@@ -254,6 +271,7 @@ function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
           const rank = row.sales != null && row.sales > 0 ? index + 1 : null;
           const share = row.sales == null ? 0 : Math.min(row.sales / WEEK_SALES_GOAL, 1);
           const hit = row.sales != null && row.sales >= WEEK_SALES_GOAL;
+          const record = week?.records?.[row.shop.id];
           return (
             <li
               key={row.shop.id}
@@ -275,8 +293,19 @@ function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
                 {rank ? `#${rank}` : "–"}
               </span>
               <span className="relative min-w-0 flex-1">
-                <span className="block truncate font-display text-lg font-semibold tracking-wide uppercase">
-                  {row.shop.name}
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-display text-lg font-semibold tracking-wide uppercase">
+                    {row.shop.name}
+                  </span>
+                  {record ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#241d0a] px-2 py-0.5 text-xs font-semibold text-[#f0d68a] shadow-[inset_0_0_0_1px_#8a6a18]"
+                      title={`Best sales week ever. The old record was ${money(record.prevValue)}.`}
+                    >
+                      <TrophyMark className="size-3.5" />
+                      New record
+                    </span>
+                  ) : null}
                 </span>
                 <span className="block truncate text-sm text-muted">
                   {row.cars != null ? `${row.cars} cars · ` : ""}
@@ -301,3 +330,4 @@ function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
     </section>
   );
 }
+

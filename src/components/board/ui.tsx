@@ -38,3 +38,25 @@ export function Card({
     </section>
   );
 }
+
+export function TrophyMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="#e2b33c"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
+      <path d="M8 6H5a3 3 0 0 0 3 4" />
+      <path d="M16 6h3a3 3 0 0 1-3 4" />
+      <path d="M12 13v4" />
+      <path d="M9 20h6" />
+      <path d="M10 17h4v3h-4z" />
+    </svg>
+  );
+}

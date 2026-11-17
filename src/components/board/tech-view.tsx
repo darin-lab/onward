@@ -3,7 +3,9 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ThumbsUp } from "lucide-react";
 import { HabitChart, HoursChart } from "@/components/board/charts";
 import { CompanyPoll } from "@/components/board/poll";
-import { Button, Card, fieldClass } from "@/components/board/ui";
+import { Button, Card, TrophyMark, fieldClass } from "@/components/board/ui";
+import { getHallOfFame } from "@/lib/board/hof.functions";
+import type { RecordMetric, ShopRecord } from "@/lib/board/hof";
 import { cn } from "@/lib/cn";
 import { storeWeek } from "@/lib/board/shared";
 import { markReviewSeen } from "@/lib/board/board.functions";
@@ -539,6 +541,42 @@ function ManagerWeek({
   const weeks = useBoard((state) => state.weeks);
   const ranks = managerRanks(techs, weeks, week.weekStart, week.techId);
   const shown = sheet ? applySheet(week, sheet) : week;
+  // A gold "Shop record" mark on a number this week set as the shop's best ever
+  // (only records set after launch, never ones from the setup).
+  const [shopRecords, setShopRecords] = useState<ShopRecord[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    void getHallOfFame()
+      .then((result) => {
+        if (!cancel) setShopRecords(result.records);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
+  const shopOfWeek = techs.find((person) => person.id === week.techId)?.shopId;
+  const RECORD_FOR: Record<string, RecordMetric> = {
+    "total-sales": "sales",
+    "sell-through": "sellthrough",
+    "average-ro": "aro",
+    "hours-per-ro": "hpro",
+    "recs-per-car": "recPerCar",
+    "sales-per-hour": "spbh",
+  };
+  const isRecord = (fieldId: string) => {
+    const metric = RECORD_FOR[fieldId];
+    return Boolean(
+      metric &&
+        shopRecords.some(
+          (record) =>
+            record.announced &&
+            record.shopId === shopOfWeek &&
+            record.metric === metric &&
+            record.start === week.weekStart,
+        ),
+    );
+  };
   const ranked = [
     ranks.totalSales,
     ranks.sellThrough,
@@ -648,6 +686,7 @@ function ManagerWeek({
           >
             {sales.text}
           </p>
+          {isRecord(sales.id) ? <RecordMark /> : null}
           <RankLine rank={sales.rank} total={ranks.total} />
         </div>
       ) : null}
@@ -675,6 +714,7 @@ function ManagerWeek({
                 {field.text}
               </p>
             )}
+            {isRecord(field.id) ? <RecordMark /> : null}
             <RankLine rank={field.rank} total={ranks.total} />
           </li>
         ))}
@@ -685,6 +725,15 @@ function ManagerWeek({
         </p>
       )}
     </Card>
+  );
+}
+
+function RecordMark() {
+  return (
+    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#241d0a] px-2 py-0.5 text-xs font-semibold text-[#f0d68a] shadow-[inset_0_0_0_1px_#8a6a18]">
+      <TrophyMark className="size-3.5" />
+      Shop record
+    </span>
   );
 }
 

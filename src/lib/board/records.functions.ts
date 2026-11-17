@@ -379,9 +379,23 @@ export const submitDayReport = createServerFn({ method: "POST" })
     await insertDayReport(sql, report, true);
     const people = await boardPeople(sql);
     const { sendDayReportMail } = await import("@/lib/board/mail-report.functions");
+    // Records this shop broke this week or today (never ones from the setup).
+    let records: string[] = [];
+    try {
+      const { hofSql, readRecords, momentsFor } = await import("@/lib/board/hof.server");
+      const { momentLine } = await import("@/lib/board/hof");
+      const monday = new Date(`${data.date}T12:00:00Z`);
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+      const all = await readRecords(await hofSql());
+      records = momentsFor(all, data.shopId, monday.toISOString().slice(0, 10), data.date, null).map((moment) =>
+        momentLine(people.shopName(data.shopId), moment),
+      );
+    } catch {
+      records = [];
+    }
     let mailed = false;
     try {
-      const result = await sendDayReportMail({ ...data, shopName: people.shopName(data.shopId) });
+      const result = await sendDayReportMail({ ...data, shopName: people.shopName(data.shopId), records });
       mailed = result.ok;
     } catch {
       mailed = false;

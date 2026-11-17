@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HallOfFameRouteImport } from './routes/hall-of-fame'
 import { Route as ApiReceiptsRouteImport } from './routes/api.receipts'
 import { Route as DayShopIdRouteImport } from './routes/day.$shopId'
 import { Route as TTechIdRouteImport } from './routes/t.$techId'
@@ -17,6 +18,11 @@ import { Route as TTechIdRouteImport } from './routes/t.$techId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HallOfFameRoute = HallOfFameRouteImport.update({
+  id: '/hall-of-fame',
+  path: '/hall-of-fame',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiReceiptsRoute = ApiReceiptsRouteImport.update({
@@ -37,12 +43,14 @@ const TTechIdRoute = TTechIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hall-of-fame': typeof HallOfFameRoute
   '/api/receipts': typeof ApiReceiptsRoute
   '/day/$shopId': typeof DayShopIdRoute
   '/t/$techId': typeof TTechIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hall-of-fame': typeof HallOfFameRoute
   '/api/receipts': typeof ApiReceiptsRoute
   '/day/$shopId': typeof DayShopIdRoute
   '/t/$techId': typeof TTechIdRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hall-of-fame': typeof HallOfFameRoute
   '/api/receipts': typeof ApiReceiptsRoute
   '/day/$shopId': typeof DayShopIdRoute
   '/t/$techId': typeof TTechIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
+  fullPaths: '/' | '/hall-of-fame' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
-  id: '__root__' | '/' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
+  to: '/' | '/hall-of-fame' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
+  id: '__root__' | '/' | '/hall-of-fame' | '/api/receipts' | '/day/$shopId' | '/t/$techId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HallOfFameRoute: typeof HallOfFameRoute
   ApiReceiptsRoute: typeof ApiReceiptsRoute
   DayShopIdRoute: typeof DayShopIdRoute
   TTechIdRoute: typeof TTechIdRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hall-of-fame': {
+      id: '/hall-of-fame'
+      path: '/hall-of-fame'
+      fullPath: '/hall-of-fame'
+      preLoaderRoute: typeof HallOfFameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/receipts': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HallOfFameRoute: HallOfFameRoute,
   ApiReceiptsRoute: ApiReceiptsRoute,
   DayShopIdRoute: DayShopIdRoute,
   TTechIdRoute: TTechIdRoute,
