@@ -17,6 +17,7 @@ import {
   type DayReport,
 } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
+import { belowGoal, goalFor, readNumber } from "@/lib/board/day-goals";
 import { checkShopRecords } from "@/lib/board/hof.functions";
 import { momentLine, type RecordMoment } from "@/lib/board/hof";
 import { TrophyMark } from "@/components/board/ui";
@@ -131,26 +132,6 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
   },
 };
 
-const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: number }>> = {
-  productivity: { label: "85% – 90%", low: 85 },
-  efficiency: { label: "100% – 150%", low: 100, high: 150 },
-  proficiency: { label: "100%", low: 100 },
-  elr: { label: "$250.00", low: 250 },
-  spbh: { label: "$400.00", low: 400 },
-  hpro: { label: "3.00", low: 3 },
-  hoursPerDay: { label: "20.00", low: 20 },
-};
-
-/** Shops with one technician get a lower billed-hours-per-day goal. */
-const SHOP_GOALS: Record<string, Partial<Record<DayFieldKey, { label: string; low: number; high?: number }>>> = {
-  "san-jose": { hoursPerDay: { label: "10.00", low: 10 } },
-  "castro-valley": { hoursPerDay: { label: "10.00", low: 10 } },
-};
-
-function goalFor(key: DayFieldKey, shopId: string) {
-  return SHOP_GOALS[shopId]?.[key] ?? GOALS[key];
-}
-
 const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
 
 /** What each number means, behind the ? next to its name. Numbers without text get no ?. */
@@ -225,12 +206,6 @@ const WEEKLY = ["proficiency", "elr", "spbh", "hoursPerDay"] as const;
 type WeeklyKey = (typeof WEEKLY)[number];
 const isWeekly = (key: DayFieldKey): key is WeeklyKey => (WEEKLY as readonly string[]).includes(key);
 
-function readNumber(raw: string | undefined) {
-  if (!raw?.trim()) return null;
-  const value = Number(raw.replace(/[$,%\s,]/g, ""));
-  return Number.isFinite(value) ? value : null;
-}
-
 function asPercent(part: number | null, whole: number | null) {
   if (part == null || whole == null || whole === 0) return "";
   return `${(Math.round((part / whole) * 1000) / 10).toFixed(1)}%`;
@@ -240,14 +215,6 @@ const MIN_NOTE = 13;
 
 function longEnough(value: string | undefined) {
   return (value?.trim().length ?? 0) >= MIN_NOTE;
-}
-
-function belowGoal(key: DayFieldKey, raw: string | undefined, shopId: string) {
-  const goal = goalFor(key, shopId);
-  const value = readNumber(raw);
-  if (!goal || value == null) return false;
-  if (value < goal.low) return true;
-  return goal.high != null && value > goal.high;
 }
 
 export function DayReportForm({ shopId }: { shopId: string }) {

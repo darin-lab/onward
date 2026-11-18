@@ -1,5 +1,6 @@
 import { DAY_FIELDS, DAY_PROMPTS, type DayFieldKey, type DayPromptKey } from "@/lib/board/model";
 import { owners } from "@/lib/board/owners";
+import { goalFor, goalTone } from "@/lib/board/day-goals";
 
 const managers: Record<string, string> = {
   "san-ramon": "sanramon@drivenautocare.com",
@@ -74,16 +75,19 @@ export async function sendDayReportMail(data: DayReportMail) {
       shopName: data.shopName,
       when,
       records: data.records ?? [],
-      rows: DAY_FIELDS.map((field) => ({
-        label: field.label,
-        value: [
-          data.values[field.key]?.trim() || "—",
-          (data.values as Record<string, string | undefined>)[`${field.key}Wtd`]?.trim(),
-        ]
-          .filter(Boolean)
-          .join(" · Week to date "),
-        note: data.notes?.[field.key]?.trim() || "",
-      })),
+      rows: DAY_FIELDS.map((field) => {
+        const today = data.values[field.key]?.trim() || "";
+        const wtd = (data.values as Record<string, string | undefined>)[`${field.key}Wtd`]?.trim() || "";
+        return {
+          label: field.label,
+          goal: goalFor(field.key, data.shopId)?.label ?? "",
+          value: today || "—",
+          tone: goalTone(field.key, today, data.shopId),
+          wtd,
+          wtdTone: goalTone(field.key, wtd, data.shopId),
+          note: data.notes?.[field.key]?.trim() || "",
+        };
+      }),
       prompts,
     }),
   });
@@ -100,6 +104,13 @@ function readableDate(iso: string) {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+type Tone = "above" | "below" | null;
+
+/** Green at or above goal, red below, like the End of Day page. Darker shades so they read on the light email. */
+function toneColor(tone: Tone) {
+  return tone === "above" ? "#1a7f37" : tone === "below" ? "#c42230" : "#1e1a16";
 }
 
 function escapeHtml(value: string) {
@@ -120,7 +131,15 @@ function reportHtml({
   shopName: string;
   when: string;
   records: string[];
-  rows: { label: string; value: string; note: string }[];
+  rows: {
+    label: string;
+    goal: string;
+    value: string;
+    tone: Tone;
+    wtd: string;
+    wtdTone: Tone;
+    note: string;
+  }[];
   prompts: { label: string; value: string }[];
 }) {
   const body = rows
@@ -128,10 +147,14 @@ function reportHtml({
       const note = row.note
         ? `<p style="margin:8px 0 0;font-size:13px;line-height:1.45;color:#5c564e;">How will you grow that number tomorrow?<br>${escapeHtml(row.note)}</p>`
         : "";
+      const goal = row.goal ? ` <span style="color:#5c564e;">· Goal ${escapeHtml(row.goal)}</span>` : "";
+      const wtd = row.wtd
+        ? ` <span style="font-size:14px;font-weight:400;color:#5c564e;">· Week to date</span> <span style="font-size:14px;font-weight:700;color:${toneColor(row.wtdTone)};">${escapeHtml(row.wtd)}</span>`
+        : "";
       return `<tr>
         <td style="padding:12px 0;border-bottom:1px solid #e6e0d6;vertical-align:top;">
-          <p style="margin:0;font-size:13px;color:#5c564e;">${escapeHtml(row.label)}</p>
-          <p style="margin:2px 0 0;font-size:18px;font-weight:700;color:#1e1a16;">${escapeHtml(row.value)}</p>
+          <p style="margin:0;font-size:13px;color:#5c564e;">${escapeHtml(row.label)}${goal}</p>
+          <p style="margin:2px 0 0;font-size:18px;font-weight:700;color:${toneColor(row.tone)};">${escapeHtml(row.value)}${wtd}</p>
           ${note}
         </td>
       </tr>`;
