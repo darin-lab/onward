@@ -1,7 +1,7 @@
 // Holiday Party RSVP: the snowflake button and its pop-ups.
 // Temporary feature: see ./README.md for removal. Shell renders <HolidayParty />
 // next to the Chat button; everything else lives in this folder.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { useBoard } from "@/lib/board/store";
@@ -30,7 +30,29 @@ function useHolidayFonts() {
   }, []);
 }
 
+/** If anything in here breaks, hide it instead of taking the page header down with it. */
+class HolidayBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("[holiday] hidden after an error", error);
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 export function HolidayParty() {
+  return (
+    <HolidayBoundary>
+      <HolidayPartyInner />
+    </HolidayBoundary>
+  );
+}
+
+function HolidayPartyInner() {
   const [state, setState] = useState<Active | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const viewAs = useBoard((s) => s.viewAs);
@@ -425,7 +447,7 @@ function OwnerModal({ state, onSaved, onClose }: { state: Active; onSaved: (s: A
     else if (p.answer === "no") nNo++;
     else nNone++;
   }
-  const shopNames = Array.from(new Set(everyone.filter((p) => p.role !== "owner").map((p) => p.shopName).filter(Boolean)))
+  const shopNames = Array.from(new Set<string>(everyone.filter((p) => p.role !== "owner").map((p) => p.shopName).filter(Boolean)))
     .sort((a, b) => (SHOP_ORDER.indexOf(a) + 99) % 100 - (SHOP_ORDER.indexOf(b) + 99) % 100 || a.localeCompare(b));
   const tabs = ["All", ...shopNames];
   const list = everyone
