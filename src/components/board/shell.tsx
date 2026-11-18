@@ -7,6 +7,7 @@ import { techReviewStage, focusReview } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { ToolsMenu } from "@/components/board/roster";
 import { ChatButton } from "@/components/chat/chat-panel";
+import { HolidayParty } from "@/holiday/holiday-party"; // Holiday Party RSVP: remove after Dec 6
 import { startViewAs, stopViewAs } from "@/lib/board/view-as";
 
 type Session = { personId: string; role: string; name: string };
@@ -42,6 +43,8 @@ export function Shell({ children }: { children: ReactNode }) {
               <div className="text-right">
                 <div className="flex items-center justify-end gap-3">
                   <ReviewAlert />
+                  {/* Holiday Party RSVP: remove after Dec 6 */}
+                  <HolidayParty />
                   <ChatButton />
                   <ToolsMenu />
                   <div>
