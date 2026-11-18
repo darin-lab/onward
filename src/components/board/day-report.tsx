@@ -361,8 +361,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     WEEKLY.map((key) => [key, (submitted && savedWeek(key)) || dashWeek[key] || ""]),
   ) as Record<WeeklyKey, string>;
   // Proficiency, ELR, SPBH and hours per day ask for a note only when the week so far is below goal.
+  // Hours per day never asks for a note: proficiency already covers it.
   const needsNote = (key: DayFieldKey) =>
-    isWeekly(key) ? belowGoal(key, week[key], shopId) : belowGoal(key, shown[key], shopId);
+    key === "hoursPerDay"
+      ? false
+      : isWeekly(key)
+        ? belowGoal(key, week[key], shopId)
+        : belowGoal(key, shown[key], shopId);
   const notesReady = DAY_FIELDS.every((field) => !needsNote(field.key) || longEnough(notes[field.key]));
   const promptsReady = DAY_PROMPTS.every((prompt) => longEnough(answers[prompt.key]));
   const ready = notesReady && promptsReady;
