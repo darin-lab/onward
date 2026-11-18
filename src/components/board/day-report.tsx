@@ -141,6 +141,16 @@ const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: nu
   hoursPerDay: { label: "20.00", low: 20 },
 };
 
+/** Shops with one technician get a lower billed-hours-per-day goal. */
+const SHOP_GOALS: Record<string, Partial<Record<DayFieldKey, { label: string; low: number; high?: number }>>> = {
+  "san-jose": { hoursPerDay: { label: "10.00", low: 10 } },
+  "castro-valley": { hoursPerDay: { label: "10.00", low: 10 } },
+};
+
+function goalFor(key: DayFieldKey, shopId: string) {
+  return SHOP_GOALS[shopId]?.[key] ?? GOALS[key];
+}
+
 const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
 
 /** What each number means, behind the ? next to its name. Numbers without text get no ?. */
@@ -232,8 +242,8 @@ function longEnough(value: string | undefined) {
   return (value?.trim().length ?? 0) >= MIN_NOTE;
 }
 
-function belowGoal(key: DayFieldKey, raw: string | undefined) {
-  const goal = GOALS[key];
+function belowGoal(key: DayFieldKey, raw: string | undefined, shopId: string) {
+  const goal = goalFor(key, shopId);
   const value = readNumber(raw);
   if (!goal || value == null) return false;
   if (value < goal.low) return true;
@@ -352,7 +362,7 @@ export function DayReportForm({ shopId }: { shopId: string }) {
   ) as Record<WeeklyKey, string>;
   // Proficiency, ELR, SPBH and hours per day ask for a note only when the week so far is below goal.
   const needsNote = (key: DayFieldKey) =>
-    isWeekly(key) ? belowGoal(key, week[key]) : belowGoal(key, shown[key]);
+    isWeekly(key) ? belowGoal(key, week[key], shopId) : belowGoal(key, shown[key], shopId);
   const notesReady = DAY_FIELDS.every((field) => !needsNote(field.key) || longEnough(notes[field.key]));
   const promptsReady = DAY_PROMPTS.every((prompt) => longEnough(answers[prompt.key]));
   const ready = notesReady && promptsReady;
@@ -547,13 +557,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             </li>
           {DAY_FIELDS.map((field) => {
             const value = shown[field.key] ?? "";
-            const low = belowGoal(field.key, value);
+            const low = belowGoal(field.key, value, shopId);
             const wtd = isWeekly(field.key) ? week[field.key] : "";
-            const wtdTone = wtd ? (belowGoal(field.key, wtd) ? "#ff4d4d" : "#3DDC84") : undefined;
+            const wtdTone = wtd ? (belowGoal(field.key, wtd, shopId) ? "#ff4d4d" : "#3DDC84") : undefined;
             const ask = needsNote(field.key);
             const entered = ENTERED.includes(field.key);
             const tone =
-              GOALS[field.key] && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
+              goalFor(field.key, shopId) && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
             return (
               <li key={field.key} className="py-1.5">
                 {/* Phone: name on top, then Goal / Best month / Today side by side with small captions.
@@ -569,12 +579,17 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                       {field.label}
                     </label>
                     {ABOUT[field.key] ? (
-                      <AboutTip id={`about-${field.key}`} label={field.label} text={ABOUT[field.key] ?? ""} />
+                      <AboutTip id={`about-${field.key}`} label={field.label} text={
+                          field.key === "hoursPerDay"
+                            ? `Billed hours for the day. Goal: ${goalFor("hoursPerDay", shopId)?.low ?? 20}.`
+                            : (ABOUT[field.key] ?? "")
+                        }
+                      />
                     ) : null}
                   </span>
                   <span className="flex flex-col text-xs whitespace-nowrap text-muted sm:w-28 sm:shrink-0 sm:text-right">
                     <span className="text-[10px] tracking-wide uppercase sm:hidden">Goal</span>
-                    {GOALS[field.key]?.label ?? (
+                    {goalFor(field.key, shopId)?.label ?? (
                       <span className="sm:hidden" aria-hidden="true">
                         —
                       </span>
