@@ -90,10 +90,18 @@ function ChatPopup() {
 }
 
 function ChatPanel() {
+  useEffect(() => {
+    // Keep the page behind the chat from scrolling or shifting sideways.
+    const html = document.documentElement.style.overflow;
+    const body = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => { document.documentElement.style.overflow = html; document.body.style.overflow = body; };
+  }, []);
   const activeRoom = useChat((s) => s.activeRoom);
   const [view, setView] = useState<"main" | "new" | "settings">("main");
   return (
-    <div className="fixed inset-0 z-40 flex w-full max-w-full flex-col overflow-x-hidden bg-canvas sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[400px] sm:border-l sm:border-white/10">
+    <div className="fixed inset-0 z-40 flex w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-canvas sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[400px] sm:border-l sm:border-white/10">
       <div className="h-1 bg-honey" />
       {view === "new" ? <NewRoom onDone={() => setView("main")} /> :
         view === "settings" ? <Settings onDone={() => setView("main")} /> :
@@ -207,7 +215,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-ink">{me.name}</p>
           <select value={presence[me.personId]?.state ?? "online"} onChange={(e) => void setStatus(e.target.value as ChatState)}
-            className="mt-0.5 rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-xs text-ink" aria-label="Your status">
+            className="mt-0.5 rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-base text-ink sm:text-xs" aria-label="Your status">
             <option value="online">Online</option>
             <option value="under_car">Under a Car</option>
             <option value="with_client">With a Client</option>
@@ -220,7 +228,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
       <NotifyCard />
       <div className="border-b border-white/10 px-3 py-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search messages" aria-label="Search messages"
-          className="w-full rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-sm text-ink" />
+          className="w-full rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-base text-ink sm:text-sm" />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         {searching ? (
@@ -281,7 +289,7 @@ function AwayInput({ value }: { value: string }) {
     <input value={text} maxLength={80} placeholder="Away message (optional)" aria-label="Away message"
       onChange={(e) => setText(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-      className="mt-1 w-full rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-xs text-ink" />
+      className="mt-1 w-full rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-base text-ink sm:text-xs" />
   );
 }
 
@@ -430,7 +438,7 @@ function RoomView() {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
   const [busy, setBusy] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
   const opened = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -438,14 +446,18 @@ function RoomView() {
   const firstUnreadId = unreadAfter == null ? null
     : messages.find((m) => m.id > unreadAfter && m.authorId !== me.personId && !m.deleted)?.id ?? null;
   useEffect(() => {
-    if (messages.length === 0) return;
+    const list = listRef.current;
+    if (!list || messages.length === 0) return;
     // First load of a room: land on the "new messages" line if there is one, else the bottom.
     if (opened.current !== roomId) {
       opened.current = roomId;
-      (dividerRef.current ?? endRef.current)?.scrollIntoView({ block: dividerRef.current ? "start" : "end" });
+      const d = dividerRef.current;
+      list.scrollTop = d ? Math.max(0, d.offsetTop - list.offsetTop - 8) : list.scrollHeight;
+      list.scrollLeft = 0;
       return;
     }
-    endRef.current?.scrollIntoView({ block: "end" });
+    list.scrollTop = list.scrollHeight;
+    list.scrollLeft = 0;
   }, [messages.length, typing.length, roomId]);
   // @mention picker: shows while the text ends in "@" plus part of a name.
   const at = text.lastIndexOf("@");
@@ -473,7 +485,7 @@ function RoomView() {
       {room.id === "all-managers" && meetUrl ? (
         <a href={meetUrl} target="_blank" rel="noreferrer" className="block bg-honey px-3 py-2 text-center text-sm font-semibold text-white">Join meeting</a>
       ) : null}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
+      <div ref={listRef} className="relative min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
         {messages.map((m, i) => {
           const a = person(m.authorId);
           const mineMsg = m.authorId === me.personId;
@@ -493,12 +505,12 @@ function RoomView() {
                   <p className="text-xs text-muted"><span className="text-ink">{a?.name ?? m.authorId}</span> · {time(m.createdAt)}</p>
                   {m.deleted ? (
                     <>
-                      <p className="whitespace-pre-wrap break-words text-sm text-muted line-through">{m.body || "(photo)"}</p>
+                      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-muted line-through">{m.body || "(photo)"}</p>
                       <p className="text-[11px] italic text-muted">Deleted by {person(m.deletedBy ?? "")?.name ?? m.deletedBy}, {m.deletedAt ? time(m.deletedAt) : ""}</p>
                     </>
                   ) : (
                     <MessageText body={m.body} people={boot.people}
-                      className={`whitespace-pre-wrap break-words text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`} />
+                      className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`} />
                   )}
                   {!m.deleted ? <Photo m={m} owner={owner} /> : null}
                   {!m.deleted ? <Reactions m={m} meId={me.personId} people={boot.people} /> : null}
@@ -512,7 +524,6 @@ function RoomView() {
           );
         })}
         {typing.length ? <p className="text-xs italic text-muted">{typing.map((id) => person(id)?.name ?? "Someone").join(", ")} typing…</p> : null}
-        <div ref={endRef} />
       </div>
       {room.canPost ? (
         <div className="border-t border-white/10 p-3">
@@ -533,14 +544,14 @@ function RoomView() {
             </div>
           ) : null}
           {busy && busy !== "sending" ? <p className="mb-1 text-xs text-honey">{busy}</p> : null}
-          <div className="flex items-end gap-2">
+          <div className="flex min-w-0 items-end gap-2">
             <button type="button" onClick={() => fileRef.current?.click()} className="px-1 pb-2 text-lg text-muted hover:text-ink" aria-label="Add photo">📷</button>
             <input ref={fileRef} type="file" accept="image/*" hidden
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void compressPhoto(f).then(setPhoto).catch((err) => setBusy(err.message)); }} />
             <textarea value={text} rows={1} maxLength={2000} placeholder="Type a message  (@ to mention someone)"
               onChange={(e) => { setText(e.target.value); noteTyping(); }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
-              className="max-h-28 min-w-0 flex-1 resize-none rounded-sm border border-white/15 bg-surface px-2 py-2 text-sm text-ink" />
+              className="max-h-28 min-w-0 flex-1 resize-none rounded-sm border border-white/15 bg-surface px-2 py-2 text-base text-ink sm:text-sm" />
             <button type="button" onClick={() => void submit()} disabled={busy === "sending"} className="rounded-sm bg-honey px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Send</button>
           </div>
         </div>
