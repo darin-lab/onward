@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { CHAT_EMOJI } from "@/lib/chat/types";
+
+const realtime = () => import("@/lib/chat/realtime.server");
 import type {
   ChatSearchHit,
   ChatBootstrap,
@@ -40,8 +42,10 @@ export const chatStatus = createServerFn({ method: "GET" }).handler(async (): Pr
 export const chatBootstrap = createServerFn({ method: "GET" }).handler(async (): Promise<ChatBootstrap> => {
   const s = await import("@/lib/chat/chat.server");
   const { viewer, sql } = await s.requireChat();
-  await s.sweepIfDue(sql);
+  const swept = await s.sweepIfDue(sql);
+  const before = (await sql.query<{ status: string }>("select status from chat_presence where person_id = $1", [viewer.personId]))[0]?.status;
   await s.signInForToday(sql, viewer.personId);
+  if (swept || before !== "online") await (await realtime()).pingEveryone({ type: "presence" });
   await s.cleanupPhotos(sql);
   const people = await s.loadDirectory(sql);
   const me = people.find((p) => p.id === viewer.personId);
@@ -71,7 +75,7 @@ export const chatPoll = createServerFn({ method: "POST" })
     const s = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await s.requireChat();
     await s.touchPresence(sql, viewer.personId);
-    await s.sweepIfDue(sql);
+    if (await s.sweepIfDue(sql)) await (await realtime()).pingEveryone({ type: "presence" });
     const rooms = await s.buildRooms(sql, viewer);
     let messages: ChatMessageInfo[] = [];
     let changed: ChatMessageInfo[] = [];
@@ -154,6 +158,8 @@ export const chatSend = createServerFn({ method: "POST" })
       Boolean(photoId),
       mentioned,
     );
+    const rt = await realtime();
+    await rt.pingUsers(await rt.roomAudience(sql, room.id), { type: "room", roomId: room.id });
     return { ok: true as const, id };
   });
 
@@ -166,9 +172,14 @@ export const chatDelete = createServerFn({ method: "POST" })
     // Only the author hides their own message; Darin and Arun may hide any.
     const rows = await sql.query(
       `update chat_messages set deleted_at = now(), deleted_by = $2
-        where id = $1 and deleted_at is null and ($3 or author_id = $2) returning id`,
+        where id = $1 and deleted_at is null and ($3 or author_id = $2) returning room_id`,
       [data.id, viewer.personId, viewer.role === "owner"],
     );
+    if (rows.length > 0) {
+      const roomId = (rows[0] as { room_id: string }).room_id;
+      const rt = await realtime();
+      await rt.pingUsers(await rt.roomAudience(sql, roomId), { type: "room", roomId });
+    }
     return { ok: rows.length > 0 };
   });
 
@@ -198,6 +209,8 @@ export const chatReact = createServerFn({ method: "POST" })
         [data.id, viewer.personId, data.emoji]);
     }
     await sql.query("update chat_messages set touched_at = now() where id = $1", [data.id]);
+    const rt = await realtime();
+    await rt.pingUsers(await rt.roomAudience(sql, roomId), { type: "room", roomId });
     return { ok: true as const };
   });
 
@@ -319,6 +332,7 @@ export const chatPresence = createServerFn({ method: "POST" })
          signed_in_day = (now() at time zone 'America/Los_Angeles')::date, last_seen = now()`,
       [viewer.personId, data.status],
     );
+    await (await realtime()).pingEveryone({ type: "presence" });
     return { ok: true as const };
   });
 
@@ -332,6 +346,7 @@ export const chatAway = createServerFn({ method: "POST" })
        on conflict (person_id) do update set away_message = $2, last_seen = now()`,
       [viewer.personId, data.away || null],
     );
+    await (await realtime()).pingEveryone({ type: "presence" });
     return { ok: true as const };
   });
 
@@ -345,6 +360,8 @@ export const chatTyping = createServerFn({ method: "POST" })
        on conflict (person_id) do update set last_seen = now(), typing_room = $2, typing_at = now()`,
       [viewer.personId, data.roomId],
     );
+    const rt = await realtime();
+    await rt.pingUsers((await rt.roomAudience(sql, data.roomId)).filter((id) => id !== viewer.personId), { type: "typing", roomId: data.roomId });
     return { ok: true as const };
   });
 
@@ -364,6 +381,7 @@ export const chatSetAvatar = createServerFn({ method: "POST" })
        on conflict (person_id) do update set avatar = $2, updated_at = now()`,
       [viewer.personId, data.avatar],
     );
+    await (await realtime()).pingEveryone({ type: "presence" });
     return { ok: true as const };
   });
 
@@ -490,3 +508,11 @@ export const chatPushUnsubscribe = createServerFn({ method: "POST" })
     await sql.query("delete from chat_push where endpoint = $1 and person_id = $2", [data.endpoint, viewer.personId]);
     return { ok: true as const };
   });
+
+/** A listen-only pass for the real-time connection; null when real-time isn't set up. */
+export const chatRealtimeToken = createServerFn({ method: "POST" }).handler(async () => {
+  const { requireChat } = await import("@/lib/chat/chat.server");
+  const { viewer } = await requireChat();
+  const token = await (await realtime()).createToken(viewer.personId);
+  return { token: (token ?? null) as Record<string, unknown> | null };
+});

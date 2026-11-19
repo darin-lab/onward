@@ -262,7 +262,7 @@ export async function signInForToday(sql: Sql, personId: string) {
  * anyone who is not an active user (no sign of life in 30 minutes) goes offline and will
  * be signed in again at their next login.
  */
-export async function sweepIfDue(sql: Sql) {
+export async function sweepIfDue(sql: Sql): Promise<boolean> {
   const rows = await sql.query<{ due: boolean }>(
     `with b as (
        select ((case when (now() at time zone 'America/Los_Angeles')::time >= time '19:00'
@@ -272,12 +272,13 @@ export async function sweepIfDue(sql: Sql) {
      select coalesce((select value::timestamptz from chat_settings where key = 'last_sweep'), 'epoch'::timestamptz)
             < (select ts from b) as due`,
   );
-  if (!rows[0]?.due) return;
+  if (!rows[0]?.due) return false;
   await setSetting(sql, "last_sweep", new Date().toISOString());
   await sql.query(
     `update chat_presence set status = 'offline', signed_in_day = null, away_message = null
       where status <> 'offline' and last_seen < now() - interval '30 minutes'`,
   );
+  return true;
 }
 
 type MessageRow = {

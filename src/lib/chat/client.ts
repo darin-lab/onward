@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import {
   chatAway, chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
-  chatRead, chatReact, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
+  chatRead, chatReact, chatRealtimeToken, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
 } from "@/lib/chat/chat.functions";
 import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
 
@@ -44,8 +44,12 @@ export function setSound(on: boolean) {
 
 // ---------- sounds (browsers need one tap on the page before audio plays) ----------
 const clips: Record<string, HTMLAudioElement> = {};
+const lastPlayed: Record<string, number> = {};
 export function playSound(name: "signon" | "signoff" | "message" | "bell") {
   if (typeof Audio === "undefined" || !get().sound) return;
+  // A push and a real-time nudge can arrive together; play the sound once.
+  if (Date.now() - (lastPlayed[name] ?? 0) < 1500) return;
+  lastPlayed[name] = Date.now();
   try {
     const a = (clips[name] ??= new Audio(`/sounds/${name}.mp3`));
     a.currentTime = 0;
@@ -62,6 +66,50 @@ let seeded = false;
 let lastActivity = Date.now();
 void lastActivity;
 let inFlight = false;
+let rtConnected = false;
+let rtClient: { close(): void } | null = null;
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+let again = false;
+
+/** A real-time nudge: check right away (soon, and merged with any others that arrive together). */
+function nudge() {
+  if (nudgeTimer) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = null;
+    if (inFlight) { again = true; return; }
+    void poll();
+  }, 120);
+}
+
+async function connectRealtime(personId: string) {
+  try {
+    const first = await chatRealtimeToken();
+    if (!first.token) return; // real-time isn't set up; the normal checking carries on
+    const Ably = await import("ably");
+    const Realtime = (Ably as unknown as { Realtime?: unknown; default?: { Realtime?: unknown } }).Realtime
+      ?? (Ably as unknown as { default?: { Realtime?: unknown } }).default?.Realtime;
+    if (!Realtime) return;
+    type Channel = { subscribe(cb: () => void): void };
+    type Conn = { on(cb: (change: { current: string }) => void): void };
+    const client = new (Realtime as new (o: unknown) => { channels: { get(n: string): Channel }; connection: Conn; close(): void })({
+      authCallback: (_params: unknown, cb: (err: unknown, token: unknown) => void) => {
+        chatRealtimeToken()
+          .then((r) => (r.token ? cb(null, r.token) : cb("Real-time is not available", null)))
+          .catch((e) => cb(e, null));
+      },
+      autoConnect: true,
+    });
+    rtClient = client;
+    client.channels.get(`u-${personId}`).subscribe(nudge);
+    client.channels.get("chat-all").subscribe(nudge);
+    client.connection.on((change) => {
+      const up = change.current === "connected";
+      if (up !== rtConnected) { rtConnected = up; schedule(); if (up) nudge(); }
+    });
+  } catch {
+    // Fall back to the normal checking.
+  }
+}
 
 function visible() { return typeof document !== "undefined" && document.visibilityState === "visible"; }
 
@@ -69,7 +117,9 @@ function schedule() {
   if (timer) clearTimeout(timer);
   if (!started || !visible()) return;
   const s = get();
-  timer = setTimeout(() => void poll(), s.open && s.activeRoom ? 4000 : 15000);
+  // With the real-time connection up, nudges do the work and this is only a safety net.
+  const slow = rtConnected;
+  timer = setTimeout(() => void poll(), s.open && s.activeRoom ? (slow ? 20000 : 4000) : (slow ? 45000 : 15000));
 }
 
 export function roomTitle(room: ChatRoomInfo, meId: string, people: ChatPerson[]) {
@@ -149,6 +199,7 @@ async function poll() {
   } finally {
     inFlight = false;
     schedule();
+    if (again) { again = false; nudge(); }
   }
 }
 let avatarStampSeen = "";
@@ -194,6 +245,7 @@ export async function startChat() {
     // If notifications were already allowed, make sure this device is subscribed.
     if (typeof Notification !== "undefined" && Notification.permission === "granted") void enablePush(true);
     schedule();
+    void connectRealtime(boot.me.personId);
   } catch {
     started = false;
   }
@@ -202,6 +254,8 @@ export async function startChat() {
 export function stopChat() {
   started = false;
   if (timer) clearTimeout(timer);
+  try { rtClient?.close(); } catch { /* ignore */ }
+  rtClient = null; rtConnected = false;
   window.removeEventListener("pointerdown", onActivity);
   window.removeEventListener("keydown", onActivity);
   document.removeEventListener("visibilitychange", onVisibility);
