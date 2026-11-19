@@ -387,7 +387,7 @@ export function ToolsMenu() {
           {panel === "emails" ? <EmailList /> : null}
           {panel === "habits" ? <CategoryEditor /> : null}
           {panel === "staff" && owner ? <StaffEditor /> : null}
-          {panel === "receipts" ? <ReceiptDesk /> : null}
+          {panel === "receipts" ? <ReceiptDesk onDone={() => setPanel(null)} /> : null}
         </ToolPopup>
       ) : null}
       {reviewing && waiting && manager ? (

@@ -5,7 +5,7 @@ const API_URL =
   "https://script.google.com/macros/s/AKfycbwdRuQXY6Yqjl0uZw-dhEFWqaEW7kQYOOXtl5sQzLoFcpnKGy46hwMmURGo-Rn3D7QU/exec";
 const PIN = "320320";
 
-const SHOP_NAMES: Record<string, string> = {
+export const SHOP_NAMES: Record<string, string> = {
   fremont: "Fremont",
   campbell: "Campbell",
   "san-ramon": "San Ramon",
@@ -13,7 +13,7 @@ const SHOP_NAMES: Record<string, string> = {
   "castro-valley": "Castro Valley",
 };
 
-type Row = { key: string; values: Record<string, number | null> };
+export type Row = { key: string; values: Record<string, number | null> };
 
 export type ShopPull = {
   fields: Partial<Record<DayFieldKey, string>>;
@@ -27,6 +27,8 @@ export type ShopPull = {
     billedHours: number | null;
     cars: number | null;
   };
+  /** Proficiency, ELR, SPBH and hours per day for the whole range, as the dashboard works them out. */
+  rates: { proficiency: string; elr: string; spbh: string; hoursPerDay: string };
 };
 
 function round(value: number, places = 2) {
@@ -46,7 +48,7 @@ function percent(value: number) {
   return `${round(value * 100, 1)}%`;
 }
 
-async function rangeRows(start: string, end: string): Promise<Row[]> {
+export async function rangeRows(start: string, end: string): Promise<Row[]> {
   const first = await fetch(API_URL, {
     method: "POST",
     redirect: "manual",
@@ -61,7 +63,7 @@ async function rangeRows(start: string, end: string): Promise<Row[]> {
   return data.ok.rows;
 }
 
-function valueOf(rows: Row[], key: string, shop: string) {
+export function valueOf(rows: Row[], key: string, shop: string) {
   return asNumber(rows.find((row) => row.key === key)?.values[shop]);
 }
 
@@ -95,6 +97,12 @@ export function readShop(rows: Row[], shop: string): ShopPull {
   if (cash != null) put("cashCheckPayments", money(cash));
   return {
     fields,
+    rates: {
+      proficiency: proficiency == null ? "" : percent(proficiency),
+      elr: elr == null ? "" : money(elr),
+      spbh: spbh == null ? "" : money(spbh),
+      hoursPerDay: hpd == null ? "" : String(round(hpd)),
+    },
     week: {
       totalSales: sales == null ? null : round(sales),
       sellThrough: sellthrough == null ? null : round(sellthrough * 100, 1),
@@ -209,5 +217,100 @@ export const pullMonthSales = createServerFn({ method: "GET" })
       return { ok: true as const, ...fresh };
     } catch {
       return { ok: false as const, start, end, sales: {}, cars: {} };
+    }
+  });
+
+/** Monday of this week through today, in shop time (Pacific). */
+export function pacificWeek(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const year = Number(get("year"));
+  const month = Number(get("month"));
+  const day = Number(get("day"));
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+  const today = new Date(Date.UTC(year, month - 1, day));
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() - ((weekday + 6) % 7));
+  return { start: iso(monday), end: iso(today) };
+}
+
+type WeekSales = { start: string; end: string; sales: Record<string, number>; cars: Record<string, number> };
+
+/** Shops whose best sales week ever is this week (set after launch, never by the setup). */
+type NewSalesRecords = Record<string, { prevValue: number; prevStart: string }>;
+
+async function newSalesRecords(weekStart: string, rows: Row[] | null): Promise<NewSalesRecords> {
+  try {
+    const { hofSql, applyWeek, settleLastWeek, readRecords } = await import("@/lib/board/hof.server");
+    const sql = await hofSql();
+    if (rows) {
+      await settleLastWeek(sql, weekStart).catch(() => undefined);
+      await applyWeek(sql, weekStart, rows, false);
+    }
+    const found: NewSalesRecords = {};
+    for (const record of await readRecords(sql)) {
+      if (record.metric !== "sales" || record.seeded || record.start !== weekStart) continue;
+      if (record.prevValue == null || !record.prevStart) continue;
+      found[record.shopId] = { prevValue: record.prevValue, prevStart: record.prevStart };
+    }
+    return found;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * This week's sales and car count per shop, Monday through today.
+ * { cached: true } answers at once with the last saved copy (or nothing);
+ * otherwise it asks the dashboard and saves what it got.
+ */
+export const pullWeekSales = createServerFn({ method: "GET" })
+  .validator((input: unknown) => ({ cached: Boolean((input as { cached?: unknown } | undefined)?.cached) }))
+  .handler(async ({ data }) => {
+    const { start, end } = pacificWeek();
+    const id = `week:${start}`;
+    const empty = { ok: false as const, start, end, sales: {}, cars: {}, records: {} as NewSalesRecords };
+    if (data.cached) {
+      try {
+        const sql = await cacheSql();
+        const rows = await sql.query<{ data: string }>("select data from dashboard_cache where id = $1", [id]);
+        if (!rows[0]) return empty;
+        const saved = JSON.parse(rows[0].data) as WeekSales;
+        return { ok: true as const, ...saved, start, records: await newSalesRecords(start, null) };
+      } catch {
+        return empty;
+      }
+    }
+    try {
+      const rows = await rangeRows(start, end);
+      const sales: Record<string, number> = {};
+      const cars: Record<string, number> = {};
+      for (const [shopId, name] of Object.entries(SHOP_NAMES)) {
+        const value = valueOf(rows, "sales", name);
+        if (value != null) sales[shopId] = round(value);
+        const count = valueOf(rows, "cars", name);
+        if (count != null) cars[shopId] = round(count, 0);
+      }
+      const fresh: WeekSales = { start, end, sales, cars };
+      try {
+        const sql = await cacheSql();
+        await sql.query(
+          `insert into dashboard_cache (id, data, updated_at) values ($1, $2, now())
+           on conflict (id) do update set data = excluded.data, updated_at = now()`,
+          [id, JSON.stringify(fresh)],
+        );
+      } catch {
+        // The page still gets the fresh numbers.
+      }
+      return { ok: true as const, ...fresh, records: await newSalesRecords(start, rows) };
+    } catch {
+      return empty;
     }
   });

@@ -6,7 +6,8 @@ import { Button, fieldClass } from "@/components/board/ui";
 
 type Waiting = { id: string; total: number; note: string; day: string; imageName: string | null };
 
-export function ReceiptDesk() {
+/** onDone closes the window once a receipt is saved and emailed. */
+export function ReceiptDesk({ onDone }: { onDone?: () => void } = {}) {
   const [total, setTotal] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -94,6 +95,11 @@ export function ReceiptDesk() {
               })),
             )
             .then((result) => {
+              // Saved and emailed: close the window. If the email failed, stay open so they see it.
+              if (result.mailed && onDone) {
+                onDone();
+                return;
+              }
               setTotal("");
               setNote("");
               setFile(null);

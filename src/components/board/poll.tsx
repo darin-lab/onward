@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { format, parseISO } from "date-fns";
+import { pullWeekSales } from "@/lib/board/dashboard.functions";
 import {
   companyPoll,
   formatHours,
@@ -13,6 +16,7 @@ import {
 } from "@/lib/board/model";
 import { useBoard } from "@/lib/board/store";
 import { cn } from "@/lib/cn";
+import { TrophyMark } from "@/components/board/ui";
 
 export function CompanyPoll({
   highlightId,
@@ -35,8 +39,20 @@ export function CompanyPoll({
 
   return (
     <section className="mt-10">
-      <h2 className="text-2xl">Leaderboard</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl">Leaderboard</h2>
+        {highlightId ? null : (
+          <Link
+            to="/hall-of-fame"
+            className="inline-flex min-h-11 items-center gap-2 font-display text-lg tracking-wide text-[#e2b33c] uppercase italic"
+          >
+            <TrophyMark className="size-5" />
+            Hall of Fame →
+          </Link>
+        )}
+      </div>
       <div className="mt-4 grid gap-8 sm:grid-cols-2">
+      {highlightId ? null : <ShopWeekBoard shops={shops} />}
       <Board
         metric={`Billed hours · ${label}`}
         rows={billed.map((row) => ({
@@ -203,3 +219,112 @@ function Board({
 export function standingFor(techs: Tech[], weeks: Parameters<typeof companyPoll>[1], techId: string) {
   return companyPoll(techs, weeks).find((row) => row.tech.id === techId) ?? null;
 }
+
+/** Each shop's weekly sales goal. */
+const WEEK_SALES_GOAL = 32000;
+
+type WeekNumbers = {
+  start: string;
+  sales: Record<string, number>;
+  cars: Record<string, number>;
+  records?: Record<string, { prevValue: number; prevStart: string }>;
+};
+
+/** Shops ranked by sales from Monday through today, from the dashboard, against the weekly goal. */
+function ShopWeekBoard({ shops }: { shops: { id: string; name: string }[] }) {
+  const [week, setWeek] = useState<WeekNumbers | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    let fresh = false;
+    void pullWeekSales({ data: { cached: true } })
+      .then((result) => {
+        if (!cancel && !fresh && result.ok) setWeek(result);
+      })
+      .catch(() => undefined);
+    void pullWeekSales({ data: { cached: false } })
+      .then((result) => {
+        if (cancel || !result.ok) return;
+        fresh = true;
+        setWeek(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const rows = shops
+    .map((shop) => ({ shop, sales: week?.sales[shop.id] ?? null, cars: week?.cars[shop.id] ?? null }))
+    .sort((a, b) => (b.sales ?? -1) - (a.sales ?? -1));
+  const since = week ? format(parseISO(week.start), "EEE MMM d") : "Monday";
+  const money = (value: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+
+  return (
+    <section>
+      <p className="text-sm text-muted">Shop sales · This week so far ({since} – today)</p>
+      <ol className="mt-4 space-y-2">
+        {rows.map((row, index) => {
+          const rank = row.sales != null && row.sales > 0 ? index + 1 : null;
+          const share = row.sales == null ? 0 : Math.min(row.sales / WEEK_SALES_GOAL, 1);
+          const hit = row.sales != null && row.sales >= WEEK_SALES_GOAL;
+          const record = week?.records?.[row.shop.id];
+          return (
+            <li
+              key={row.shop.id}
+              className="relative flex min-h-14 items-center gap-3 overflow-hidden rounded-2xl bg-surface px-3 py-2 shadow-border"
+            >
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0"
+                style={{ width: `${share * 100}%`, background: hit ? "rgba(61, 220, 132, 0.18)" : "rgba(225, 6, 0, 0.22)" }}
+              />
+              <span
+                className={cn(
+                  "relative w-10 font-display text-2xl font-semibold italic tabular-nums",
+                  rank === 1 && "metal metal-gold",
+                  rank === 2 && "metal metal-silver",
+                  rank === 3 && "metal metal-bronze",
+                )}
+              >
+                {rank ? `#${rank}` : "–"}
+              </span>
+              <span className="relative min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-display text-lg font-semibold tracking-wide uppercase">
+                    {row.shop.name}
+                  </span>
+                  {record ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#241d0a] px-2 py-0.5 text-xs font-semibold text-[#f0d68a] shadow-[inset_0_0_0_1px_#8a6a18]"
+                      title={`Best sales week ever. The old record was ${money(record.prevValue)}.`}
+                    >
+                      <TrophyMark className="size-3.5" />
+                      New record
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block truncate text-sm text-muted">
+                  {row.cars != null ? `${row.cars} cars · ` : ""}
+                  {hit
+                    ? "Goal hit"
+                    : `${money(Math.max(WEEK_SALES_GOAL - (row.sales ?? 0), 0))} to ${money(WEEK_SALES_GOAL)}`}
+                </span>
+              </span>
+              <span
+                className="relative font-display text-xl font-semibold tabular-nums"
+                style={hit ? { color: "#3DDC84" } : undefined}
+              >
+                {row.sales == null ? "—" : money(row.sales)}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-2 text-xs text-muted">
+        Monday to today, from the shop dashboard. Goal {money(WEEK_SALES_GOAL)} per shop. Starts over each Monday.
+      </p>
+    </section>
+  );
+}
+

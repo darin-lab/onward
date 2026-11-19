@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   DAY_FIELDS,
@@ -17,7 +17,11 @@ import {
   type DayReport,
 } from "@/lib/board/model";
 import { pullShopRange } from "@/lib/board/dashboard.functions";
-import { getDayReport, getWeekDayReports, submitDayReport } from "@/lib/board/records.functions";
+import { belowGoal, goalFor, readNumber } from "@/lib/board/day-goals";
+import { checkShopRecords } from "@/lib/board/hof.functions";
+import { momentLine, type RecordMoment } from "@/lib/board/hof";
+import { TrophyMark } from "@/components/board/ui";
+import { getDayReport, submitDayReport } from "@/lib/board/records.functions";
 import { useBoard } from "@/lib/board/store";
 import { refreshCalls, refreshFeedback, refreshWeeks } from "@/lib/board/shared";
 import { FeedbackPopup, type FeedbackFor } from "@/components/board/feedback";
@@ -128,16 +132,6 @@ const BEST_MONTH: Record<string, { label: string; values: Partial<Record<DayFiel
   },
 };
 
-const GOALS: Partial<Record<DayFieldKey, { label: string; low: number; high?: number }>> = {
-  productivity: { label: "85% – 90%", low: 85 },
-  efficiency: { label: "100% – 150%", low: 100, high: 150 },
-  proficiency: { label: "100%", low: 100 },
-  elr: { label: "$250.00", low: 250 },
-  spbh: { label: "$400.00", low: 400 },
-  hpro: { label: "3.00", low: 3 },
-  hoursPerDay: { label: "20.00", low: 20 },
-};
-
 const ENTERED: DayFieldKey[] = ["workHours", "serviceHours", "availableHours"];
 
 /** What each number means, behind the ? next to its name. Numbers without text get no ?. */
@@ -150,7 +144,7 @@ const ABOUT: Partial<Record<DayFieldKey, string>> = {
   efficiency:
     "Billed hours ÷ service hours. How the hours we billed compare with the time spent doing the work. Over 100% means the work got done faster than it was billed. Goal: 100–150%.",
   proficiency:
-    "Billed hours ÷ available hours. How many billed hours we got out of the techs' available time. It's productivity and efficiency together. Goal: 100%.",
+    "Billed hours ÷ available hours. How many billed hours we got out of the techs' available time. Goal: 100%.",
   hoursPerDay: "Billed hours for the day. Goal: 20.",
   billedHours: "Billed hours: the labor hours billed on all jobs that closed today.",
   workHours: "Work hours: the actual time clocked in Shop-Ware that a technician spent on any job today.",
@@ -207,38 +201,10 @@ function AboutTip({ id, label, text }: { id: string; label: string; text: string
   );
 }
 
-/** These three also show a week-to-date number, and their note opens only when that is below goal. */
-const WEEKLY = ["productivity", "efficiency", "proficiency"] as const;
+/** These four also show a week-to-date number from the dashboard, and their note opens only when that is below goal. */
+const WEEKLY = ["proficiency", "elr", "spbh", "hoursPerDay"] as const;
 type WeeklyKey = (typeof WEEKLY)[number];
 const isWeekly = (key: DayFieldKey): key is WeeklyKey => (WEEKLY as readonly string[]).includes(key);
-
-/** Hours from each day, added up, then divided, so a short day counts for less. */
-function weekToDate(days: Partial<Record<DayFieldKey, string>>[]): Record<WeeklyKey, string> {
-  const total = (part: DayFieldKey, whole: DayFieldKey) => {
-    let top = 0;
-    let bottom = 0;
-    for (const day of days) {
-      const a = readNumber(day[part]);
-      const b = readNumber(day[whole]);
-      // A day counts only when it has both numbers.
-      if (a == null || b == null) continue;
-      top += a;
-      bottom += b;
-    }
-    return asPercent(bottom ? top : null, bottom || null);
-  };
-  return {
-    productivity: total("workHours", "availableHours"),
-    efficiency: total("billedHours", "serviceHours"),
-    proficiency: total("billedHours", "availableHours"),
-  };
-}
-
-function readNumber(raw: string | undefined) {
-  if (!raw?.trim()) return null;
-  const value = Number(raw.replace(/[$,%\s,]/g, ""));
-  return Number.isFinite(value) ? value : null;
-}
 
 function asPercent(part: number | null, whole: number | null) {
   if (part == null || whole == null || whole === 0) return "";
@@ -249,14 +215,6 @@ const MIN_NOTE = 13;
 
 function longEnough(value: string | undefined) {
   return (value?.trim().length ?? 0) >= MIN_NOTE;
-}
-
-function belowGoal(key: DayFieldKey, raw: string | undefined) {
-  const goal = GOALS[key];
-  const value = readNumber(raw);
-  if (!goal || value == null) return false;
-  if (value < goal.low) return true;
-  return goal.high != null && value > goal.high;
 }
 
 export function DayReportForm({ shopId }: { shopId: string }) {
@@ -317,21 +275,34 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     };
   }, [shopId, date]);
 
-  const [earlier, setEarlier] = useState<Partial<Record<DayFieldKey, string>>[]>([]);
+  // Week to date comes straight from the dashboard: Monday through this day.
+  // The work week is Monday to Thursday, so a report on Friday to Sunday shows Monday to Thursday.
+  const [dashWeek, setDashWeek] = useState<Partial<Record<WeeklyKey, string>>>({});
   useEffect(() => {
     let cancel = false;
-    setEarlier([]);
-    const start = mondayISO(parseISO(date));
-    if (start === date) return;
-    void getWeekDayReports({ data: { shopId, start, before: date } })
-      .then((reports) => {
-        if (cancel) return;
-        // Only Monday to Thursday count toward the week.
-        setEarlier(
-          reports
-            .filter((report) => [1, 2, 3, 4].includes(parseISO(report.date).getDay()))
-            .map((report) => report.values),
-        );
+    setDashWeek({});
+    const day = parseISO(date);
+    const start = mondayISO(day);
+    const end = [1, 2, 3, 4].includes(day.getDay()) ? date : format(addDays(parseISO(start), 3), "yyyy-MM-dd");
+    void pullShopRange({ data: { shopId, start, end } })
+      .then((result) => {
+        if (!cancel && result.ok) setDashWeek(result.rates);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [shopId, date]);
+
+  // Shop records: what this shop broke this week or today (never ones from the setup),
+  // and weekly rates running ahead of the record.
+  const [moments, setMoments] = useState<RecordMoment[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    setMoments([]);
+    void checkShopRecords({ data: { shopId, date } })
+      .then((result) => {
+        if (!cancel) setMoments(result.moments);
       })
       .catch(() => undefined);
     return () => {
@@ -351,12 +322,19 @@ export function DayReportForm({ shopId }: { shopId: string }) {
     efficiency,
     proficiency,
   };
-  // The work week is Monday to Thursday; a report on another day does not add to it.
-  const workDay = [1, 2, 3, 4].includes(parseISO(date).getDay());
-  const week = weekToDate(workDay ? [...earlier, { ...draft }] : earlier);
-  // Productivity, efficiency and proficiency ask for a note only when the week so far is below goal.
+  // A sent report keeps the week-to-date numbers it was sent with.
+  const savedWeek = (key: WeeklyKey) => (draft as Record<string, string | undefined>)[`${key}Wtd`]?.trim() ?? "";
+  const week = Object.fromEntries(
+    WEEKLY.map((key) => [key, (submitted && savedWeek(key)) || dashWeek[key] || ""]),
+  ) as Record<WeeklyKey, string>;
+  // Proficiency, ELR, SPBH and hours per day ask for a note only when the week so far is below goal.
+  // Hours per day never asks for a note: proficiency already covers it.
   const needsNote = (key: DayFieldKey) =>
-    isWeekly(key) ? belowGoal(key, week[key]) : belowGoal(key, shown[key]);
+    key === "hoursPerDay"
+      ? false
+      : isWeekly(key)
+        ? belowGoal(key, week[key], shopId)
+        : belowGoal(key, shown[key], shopId);
   const notesReady = DAY_FIELDS.every((field) => !needsNote(field.key) || longEnough(notes[field.key]));
   const promptsReady = DAY_PROMPTS.every((prompt) => longEnough(answers[prompt.key]));
   const ready = notesReady && promptsReady;
@@ -499,6 +477,35 @@ export function DayReportForm({ shopId }: { shopId: string }) {
         </p>
       ) : null}
 
+      {moments.length > 0 ? (
+        <ul className="mt-6 space-y-3">
+          {moments.map((moment) => (
+            <li
+              key={`${moment.kind}-${moment.metric}`}
+              className={cn(
+                "flex items-start gap-3 rounded-2xl p-4",
+                moment.kind === "new"
+                  ? "bg-[#1f1806] shadow-[inset_0_0_0_2px_#e2b33c]"
+                  : "bg-surface shadow-[inset_0_0_0_1px_#8a6a18]",
+              )}
+            >
+              <TrophyMark className={moment.kind === "new" ? "size-8 shrink-0" : "size-6 shrink-0"} />
+              <span>
+                <span
+                  className={cn(
+                    "block font-display font-semibold uppercase italic",
+                    moment.kind === "new" ? "metal metal-gold text-2xl" : "text-lg text-[#e2b33c]",
+                  )}
+                >
+                  {moment.kind === "new" ? "New shop record" : "On pace for a record"}
+                </span>
+                <span className="mt-1 block text-ink">{momentLine(shop?.name ?? "Shop", moment)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <Card className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm text-muted" htmlFor="report-date">
@@ -522,13 +529,13 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             </li>
           {DAY_FIELDS.map((field) => {
             const value = shown[field.key] ?? "";
-            const low = belowGoal(field.key, value);
+            const low = belowGoal(field.key, value, shopId);
             const wtd = isWeekly(field.key) ? week[field.key] : "";
-            const wtdTone = wtd ? (belowGoal(field.key, wtd) ? "#ff4d4d" : "#3DDC84") : undefined;
+            const wtdTone = wtd ? (belowGoal(field.key, wtd, shopId) ? "#ff4d4d" : "#3DDC84") : undefined;
             const ask = needsNote(field.key);
             const entered = ENTERED.includes(field.key);
             const tone =
-              GOALS[field.key] && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
+              goalFor(field.key, shopId) && readNumber(value) != null ? (low ? "#ff4d4d" : "#3DDC84") : undefined;
             return (
               <li key={field.key} className="py-1.5">
                 {/* Phone: name on top, then Goal / Best month / Today side by side with small captions.
@@ -544,12 +551,17 @@ export function DayReportForm({ shopId }: { shopId: string }) {
                       {field.label}
                     </label>
                     {ABOUT[field.key] ? (
-                      <AboutTip id={`about-${field.key}`} label={field.label} text={ABOUT[field.key] ?? ""} />
+                      <AboutTip id={`about-${field.key}`} label={field.label} text={
+                          field.key === "hoursPerDay"
+                            ? `Billed hours for the day. Goal: ${goalFor("hoursPerDay", shopId)?.low ?? 20}.`
+                            : (ABOUT[field.key] ?? "")
+                        }
+                      />
                     ) : null}
                   </span>
                   <span className="flex flex-col text-xs whitespace-nowrap text-muted sm:w-28 sm:shrink-0 sm:text-right">
                     <span className="text-[10px] tracking-wide uppercase sm:hidden">Goal</span>
-                    {GOALS[field.key]?.label ?? (
+                    {goalFor(field.key, shopId)?.label ?? (
                       <span className="sm:hidden" aria-hidden="true">
                         —
                       </span>
