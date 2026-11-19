@@ -110,6 +110,30 @@ function ChatPanel() {
   );
 }
 
+// Manager meeting: Mondays 6:30-7:15 AM Pacific. Outside that window the button is greyed out.
+function meetingLive(now = new Date()) {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "short", hour: "numeric", minute: "numeric", hour12: false }).formatToParts(now);
+  const get = (k: string) => p.find((x) => x.type === k)?.value ?? "";
+  const mins = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
+  return get("weekday") === "Mon" && mins >= 6 * 60 + 30 && mins < 7 * 60 + 15;
+}
+
+function MeetingBar({ url }: { url: string }) {
+  const [live, setLive] = useState(() => meetingLive());
+  useEffect(() => {
+    const id = window.setInterval(() => setLive(meetingLive()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (live) {
+    return <a href={url} target="_blank" rel="noreferrer" className="block bg-honey px-3 py-2 text-center text-sm font-semibold text-white">Join meeting</a>;
+  }
+  return (
+    <div className="bg-white/10 px-3 py-2 text-center text-sm font-semibold text-muted" aria-disabled="true">
+      Join meeting <span className="font-normal">· Mondays 6:30–7:15 AM</span>
+    </div>
+  );
+}
+
 function Header({ title, onBack, right }: { title: string; onBack?: () => void; right?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3">
@@ -483,7 +507,7 @@ function RoomView() {
             onClick={() => void muteRoom(room.id, !room.muted)}>{room.muted ? "Unmute" : "Mute"}</button>
         )} />
       {room.id === "all-managers" && meetUrl ? (
-        <a href={meetUrl} target="_blank" rel="noreferrer" className="block bg-honey px-3 py-2 text-center text-sm font-semibold text-white">Join meeting</a>
+        <MeetingBar url={meetUrl} />
       ) : null}
       <div ref={listRef} className="relative min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
         {messages.map((m, i) => {
