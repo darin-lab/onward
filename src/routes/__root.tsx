@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { VoiceInput } from "@/components/voice-input";
 import { useBoard } from "@/lib/board/store";
 import appCss from "../styles.css?url";
 
@@ -59,6 +60,7 @@ function RootComponent() {
         <AuthProvider>
           <Outlet />
         </AuthProvider>
+        <VoiceInput />
         <Scripts />
       </body>
     </html>

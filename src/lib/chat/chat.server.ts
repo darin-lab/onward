@@ -5,6 +5,7 @@ import type { Viewer } from "@/lib/board/darin.server";
 import type {
   ChatMessageInfo,
   ChatPerson,
+  ChatPin,
   ChatPresence,
   ChatRoomInfo,
 } from "@/lib/chat/types";
@@ -190,8 +191,14 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
     list.push(row.person_id);
     byRoom.set(row.room_id, list);
   }
+  const reads = new Map<string, number>();
+  for (const row of await sql.query<{ room_id: string; person_id: string; last_read_id: number }>(
+    `select m.room_id, m.person_id, m.last_read_id from chat_members m join chat_rooms r on r.id = m.room_id where r.kind = 'dm'`)) {
+    if (row.person_id !== viewer.personId) reads.set(row.room_id, Number(row.last_read_id));
+  }
   return visible.map((room) => ({
     id: room.id,
+    otherRead: reads.get(room.id) ?? 0,
     kind: room.kind,
     name: room.name ?? (room.kind === "group" ? "Group chat" : ""),
     audience: room.audience,
@@ -294,6 +301,17 @@ type MessageRow = {
   keep: boolean | null;
   has_photo_row: boolean | null;
   mentions: string | null;
+  reply_to: number | null;
+  reply_author: string | null;
+  reply_body: string | null;
+  reply_deleted: boolean | null;
+  edited_at: Date | string | null;
+  pinned_at: Date | string | null;
+  gif_url: string | null;
+  file_id: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  file_expired: Date | string | null;
 };
 
 function toMessage(row: MessageRow, viewer: Viewer): ChatMessageInfo {
@@ -315,12 +333,44 @@ function toMessage(row: MessageRow, viewer: Viewer): ChatMessageInfo {
     kept: Boolean(row.keep),
     mentions: hide ? [] : (row.mentions ?? "").split(",").filter(Boolean),
     reactions: [],
+    replyTo: row.reply_to && !hide
+      ? { id: Number(row.reply_to), authorId: row.reply_author ?? "", text: row.reply_deleted && !owner ? "(deleted message)" : (row.reply_body ?? "") }
+      : null,
+    editedAt: hide ? null : iso(row.edited_at),
+    pinned: !hide && row.pinned_at != null,
+    gifUrl: hide ? null : row.gif_url,
+    file: row.file_id && !hide && row.file_name
+      ? { id: row.file_id, name: row.file_name, size: Number(row.file_size ?? 0), state: row.file_expired ? "expired" : "ok" }
+      : null,
   };
 }
 
 const MESSAGE_SELECT = `select m.id, m.room_id, m.author_id, m.body, m.photo_id, m.created_at,
-       m.deleted_at, m.deleted_by, m.mentions, p.expired_at, p.keep, (p.id is not null) as has_photo_row
-  from chat_messages m left join chat_photos p on p.id = m.photo_id`;
+       m.deleted_at, m.deleted_by, m.mentions, m.reply_to, m.edited_at, m.pinned_at, m.gif_url, m.file_id,
+       p.expired_at, p.keep, (p.id is not null) as has_photo_row,
+       rm.author_id as reply_author, rm.body as reply_body, (rm.deleted_at is not null) as reply_deleted,
+       f.name as file_name, f.size as file_size, f.expired_at as file_expired
+  from chat_messages m
+  left join chat_photos p on p.id = m.photo_id
+  left join chat_messages rm on rm.id = m.reply_to
+  left join chat_files f on f.id = m.file_id`;
+
+/** Pinned messages of a room, newest pin first. */
+export async function listPins(sql: Sql, roomId: string, viewer: Viewer): Promise<ChatPin[]> {
+  const rows = await sql.query<{ id: number; author_id: string; body: string; gif_url: string | null; photo_id: string | null; file_name: string | null }>(
+    `select m.id, m.author_id, m.body, m.gif_url, m.photo_id, f.name as file_name
+       from chat_messages m left join chat_files f on f.id = m.file_id
+      where m.room_id = $1 and m.pinned_at is not null and m.deleted_at is null
+      order by m.pinned_at desc limit 5`,
+    [roomId],
+  );
+  void viewer;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    authorId: r.author_id,
+    text: r.body || (r.file_name ? `📎 ${r.file_name}` : r.gif_url ? "GIF" : r.photo_id ? "Photo" : ""),
+  }));
+}
 
 /**
  * Messages for one room. after = 0 means "the latest 60"; otherwise only newer
@@ -352,7 +402,7 @@ export async function listMessages(
   let changed: MessageRow[] = [];
   if (since && after > 0) {
     changed = await sql.query<MessageRow>(
-      `${MESSAGE_SELECT} where m.room_id = $1 and (m.deleted_at > $2 or m.touched_at > $2) and m.id <= $3 limit 100`,
+      `${MESSAGE_SELECT} where m.room_id = $1 and (m.deleted_at > $2 or m.touched_at > $2 or m.edited_at > $2 or m.pinned_at > $2) and m.id <= $3 limit 100`,
       [roomId, since, after],
     );
   }
@@ -441,6 +491,10 @@ export async function cleanupPhotos(sql: Sql) {
     `update chat_photos set data = '', expired_at = now()
       where keep = false and expired_at is null and created_at < now() - interval '30 days'`,
   );
+  await sql.query(
+    `update chat_files set data = '', expired_at = now()
+      where expired_at is null and created_at < now() - interval '30 days'`,
+  );
 }
 
 type PushPayload = { title: string; body: string; roomId: string; tag: string };
@@ -457,6 +511,7 @@ export async function pushToRoom(
   body: string,
   hasPhoto: boolean,
   mentioned: string[] = [],
+  extra = "",
 ) {
   try {
     const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
@@ -467,14 +522,21 @@ export async function pushToRoom(
       `select p.endpoint, p.p256dh, p.auth, p.person_id
          from chat_members m
          join chat_push p on p.person_id = m.person_id
+        left join chat_profiles cp on cp.person_id = p.person_id
         where m.room_id = $1 and m.person_id <> $2
-          and (m.muted = false or m.person_id = any($3::text[]))`,
+          and (m.muted = false or m.person_id = any($3::text[]))
+          and (m.person_id = any($3::text[]) or cp.dnd_start is null or cp.dnd_end is null
+               or not (case when cp.dnd_start <= cp.dnd_end
+                            then extract(hour from now() at time zone 'America/Los_Angeles') >= cp.dnd_start
+                             and extract(hour from now() at time zone 'America/Los_Angeles') < cp.dnd_end
+                            else extract(hour from now() at time zone 'America/Los_Angeles') >= cp.dnd_start
+                              or extract(hour from now() at time zone 'America/Los_Angeles') < cp.dnd_end end))`,
       [room.id, author?.id ?? "", mentioned],
     );
     if (subs.length === 0) return;
     const preview = (await getSetting(sql, "push_preview", "full")) === "full";
     const who = author?.name ?? "Someone";
-    const text = body.trim() || (hasPhoto ? "Sent a photo" : "New message");
+    const text = body.trim() || extra || (hasPhoto ? "Sent a photo" : "New message");
     const title = room.kind === "dm" ? who : (room.name ?? "Driven Chat");
     const payloadFor = (isMention: boolean): PushPayload => ({
       title: preview ? (isMention ? `${who} mentioned you` : title) : "Driven Chat",
@@ -508,4 +570,10 @@ export async function pushToRoom(
   } catch (error) {
     console.error("[chat] push failed:", error instanceof Error ? error.message : error);
   }
+}
+
+export async function loadDnd(sql: Sql, personId: string): Promise<{ start: number | null; end: number | null }> {
+  const rows = await sql.query<{ dnd_start: number | null; dnd_end: number | null }>(
+    "select dnd_start, dnd_end from chat_profiles where person_id = $1", [personId]);
+  return { start: rows[0]?.dnd_start ?? null, end: rows[0]?.dnd_end ?? null };
 }

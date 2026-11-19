@@ -2,9 +2,9 @@
 import { create } from "zustand";
 import {
   chatAway, chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
-  chatRead, chatReact, chatRealtimeToken, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
+  chatRead, chatReact, chatRealtimeToken, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute, chatEdit, chatPin, chatDndSave,
 } from "@/lib/chat/chat.functions";
-import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
+import type { ChatPin, ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
 
 type Popup = { roomId: string; title: string; text: string } | null;
 
@@ -21,6 +21,8 @@ type State = {
   unreadAfter: number | null;
   messages: ChatMessageInfo[];
   typing: string[];
+  pins: ChatPin[];
+  replyTo: ChatMessageInfo | null;
   popup: Popup;
   sound: boolean;
   error: string;
@@ -28,7 +30,7 @@ type State = {
 
 export const useChat = create<State>(() => ({
   status: null, boot: null, rooms: [], presence: {}, avatars: {}, meetUrl: "",
-  open: false, activeRoom: null, unreadAfter: null, messages: [], typing: [], popup: null,
+  open: false, activeRoom: null, unreadAfter: null, messages: [], typing: [], pins: [], replyTo: null, popup: null,
   sound: readSound(), error: "",
 }));
 const set = useChat.setState;
@@ -186,7 +188,7 @@ async function poll() {
       if (avatarStampSeen) void refreshAvatars();
       avatarStampSeen = res.avatarStamp;
     }
-    set({ rooms: res.rooms, presence: res.presence, messages, typing: res.typing, meetUrl: res.meetUrl, error: "" });
+    set({ rooms: res.rooms, presence: res.presence, messages, typing: res.typing, pins: res.pins, meetUrl: res.meetUrl, error: "" });
     seeded = true;
     // Mark the open room read
     const s = get();
@@ -272,7 +274,7 @@ export async function openRoom(roomId: string | null) {
   lastId = 0;
   const room = roomId ? get().rooms.find((r) => r.id === roomId) : undefined;
   set({
-    activeRoom: roomId, messages: [], typing: [], open: true, popup: null,
+    activeRoom: roomId, messages: [], typing: [], pins: [], replyTo: null, open: true, popup: null,
     unreadAfter: room && room.unread > 0 ? room.lastRead : null,
   });
   if (roomId) await poll();
@@ -288,14 +290,38 @@ export async function createRoom(kind: "group" | "channel", name: string, member
   await openRoom(roomId);
 }
 
-export async function sendMessage(body: string, photo: string) {
+export type Attachment = { gif?: string; file?: { name: string; data: string } };
+export async function sendMessage(body: string, photo: string, extra: Attachment = {}) {
   const roomId = get().activeRoom;
   if (!roomId) return;
-  await chatSend({ data: { roomId, body, photo } });
+  const replyTo = get().replyTo?.id;
+  await chatSend({ data: { roomId, body, photo, gif: extra.gif, file: extra.file, replyTo } });
+  set({ replyTo: null });
   lastActivity = Date.now();
   await poll();
 }
-
+export function setReplyTo(m: ChatMessageInfo | null) { set({ replyTo: m }); }
+export async function editMessage(id: number, body: string) {
+  await chatEdit({ data: { id, body } });
+  await poll();
+}
+export async function pinMessage(id: number, pinned: boolean) {
+  await chatPin({ data: { id, pinned } });
+  await poll();
+}
+export async function saveDnd(start: number | null, end: number | null) {
+  await chatDndSave({ data: { start, end } });
+  const boot = get().boot;
+  if (boot) set({ boot: { ...boot, dnd: { start, end } } });
+}
+export function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(new Error("Couldn't read that file"));
+    r.readAsDataURL(file);
+  });
+}
 export async function reactTo(id: number, emoji: string) {
   await chatReact({ data: { id, emoji } });
   await poll();

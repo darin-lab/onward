@@ -34,6 +34,8 @@ export type ChatRoomInfo = {
   lastRead: number;
   muted: boolean;
   canPost: boolean;
+  /** Direct messages only: newest message id the other person has read. */
+  otherRead: number;
   last: { id: number; authorId: string; text: string; photo: boolean; at: string } | null;
 };
 
@@ -53,7 +55,14 @@ export type ChatMessageInfo = {
   /** Person ids @mentioned in the message. */
   mentions: string[];
   reactions: { emoji: string; by: string[] }[];
+  replyTo: { id: number; authorId: string; text: string } | null;
+  editedAt: string | null;
+  pinned: boolean;
+  gifUrl: string | null;
+  file: { id: string; name: string; size: number; state: "ok" | "expired" } | null;
 };
+
+export type ChatPin = { id: number; authorId: string; text: string };
 
 export type ChatState = "online" | "offline" | "under_car" | "with_client";
 
@@ -77,6 +86,8 @@ export type ChatBootstrap = {
   presence: ChatPresence;
   avatars: Record<string, string>;
   meetUrl: string;
+  gifEnabled: boolean;
+  dnd: { start: number | null; end: number | null };
   vapidPublicKey: string;
   serverTime: string;
 };
@@ -94,6 +105,7 @@ export type ChatPollResult = {
   /** Messages that changed since the last poll (hidden by their author). */
   changed: ChatMessageInfo[];
   typing: string[];
+  pins: ChatPin[];
   avatarStamp: string;
   meetUrl: string;
   serverTime: string;

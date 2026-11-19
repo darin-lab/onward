@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, startChat, stopChat, setOpen, openRoom, openDm, createRoom, sendMessage, deleteMessage,
-  noteTyping, muteRoom, reactTo, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
-import { chatKeepPhoto, chatPhoto, chatSearch, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
+  noteTyping, muteRoom, reactTo, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound, setReplyTo, editMessage, pinMessage, saveDnd, readFileAsBase64 } from "@/lib/chat/client";
+import { chatFile, chatGifSearch, chatKeepPhoto, chatPhoto, chatSearch, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
 import { useBoard } from "@/lib/board/store";
 import { CHAT_EMOJI } from "@/lib/chat/types";
 import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSearchHit, ChatSettings, ChatState } from "@/lib/chat/types";
@@ -250,6 +250,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         <button type="button" onClick={() => setSound(!sound)} className="text-xs text-muted hover:text-ink">{sound ? "Sound on" : "Sound off"}</button>
       </div>
       <NotifyCard />
+      <QuietHours />
       <div className="border-b border-white/10 px-3 py-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search messages" aria-label="Search messages"
           className="w-full rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-base text-ink sm:text-sm" />
@@ -395,6 +396,8 @@ function Photo({ m, owner }: { m: ChatMessageInfo; owner: boolean }) {
       {big ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={() => setBig(false)}>
           <img src={src} alt="" className="max-h-full max-w-full" />
+          <button type="button" aria-label="Close photo" className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-lg text-white">✕</button>
+          <a href={src} download="photo.jpg" onClick={(e) => e.stopPropagation()} className="absolute bottom-4 rounded-sm bg-black/60 px-3 py-1.5 text-sm text-white">Save photo</a>
         </div>
       ) : null}
     </div>
@@ -448,6 +451,89 @@ function Reactions({ m, meId, people }: { m: ChatMessageInfo; meId: string; peop
   );
 }
 
+function QuietHours() {
+  const dnd = useChat((s) => s.boot?.dnd) ?? { start: null, end: null };
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  const label = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
+  const on = dnd.start !== null && dnd.end !== null;
+  const sel = "rounded-sm border border-white/15 bg-surface px-1.5 py-0.5 text-base text-ink sm:text-xs";
+  return (
+    <div className="border-b border-white/10 px-3 py-2 text-xs text-muted">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={on} onChange={(e) => void saveDnd(e.target.checked ? 21 : null, e.target.checked ? 6 : null)} />
+        Quiet hours (no notifications, except @mentions)
+      </label>
+      {on ? (
+        <div className="mt-1 flex items-center gap-2">
+          <select className={sel} aria-label="Quiet hours start" value={dnd.start ?? 21} onChange={(e) => void saveDnd(Number(e.target.value), dnd.end)}>
+            {hours.map((h) => <option key={h} value={h}>{label(h)}</option>)}
+          </select>
+          to
+          <select className={sel} aria-label="Quiet hours end" value={dnd.end ?? 6} onChange={(e) => void saveDnd(dnd.start, Number(e.target.value))}>
+            {hours.map((h) => <option key={h} value={h}>{label(h)}</option>)}
+          </select>
+          Pacific
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GifPicker({ onPick, onClose }: { onPick: (url: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [gifs, setGifs] = useState<{ id: string; url: string; preview: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    const id = window.setTimeout(() => {
+      void chatGifSearch({ data: { q } }).then((r) => setGifs(r.gifs)).catch(() => setGifs([])).finally(() => setLoading(false));
+    }, q ? 350 : 0);
+    return () => window.clearTimeout(id);
+  }, [q]);
+  return (
+    <div className="mb-2 rounded-sm border border-white/15 bg-surface p-2">
+      <div className="mb-2 flex items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search GIFs" autoFocus
+          className="min-w-0 flex-1 rounded-sm border border-white/15 bg-canvas px-2 py-1.5 text-base text-ink sm:text-sm" />
+        <button type="button" onClick={onClose} className="text-xs text-muted underline">Close</button>
+      </div>
+      <div className="grid max-h-48 grid-cols-3 gap-1 overflow-y-auto">
+        {gifs.map((g) => (
+          <button key={g.id} type="button" onClick={() => onPick(g.url)} className="overflow-hidden rounded-sm bg-raised">
+            <img src={g.preview} alt="GIF" loading="lazy" className="h-20 w-full object-cover" />
+          </button>
+        ))}
+      </div>
+      {!loading && gifs.length === 0 ? <p className="py-3 text-center text-xs text-muted">No GIFs found.</p> : null}
+      <p className="mt-1 text-right text-[10px] text-muted">Powered by GIPHY</p>
+    </div>
+  );
+}
+
+function FileChip({ m }: { m: ChatMessageInfo }) {
+  const [busy, setBusy] = useState(false);
+  if (!m.file) return null;
+  if (m.file.state === "expired") return <p className="mt-1 text-xs italic text-muted">📎 {m.file.name} (file expired)</p>;
+  const open = async () => {
+    setBusy(true);
+    try {
+      const r = await chatFile({ data: { id: m.file!.id } });
+      if (!r.data) return;
+      const bytes = Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.mime }));
+      const a = document.createElement("a");
+      a.href = url; a.download = r.name; a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } finally { setBusy(false); }
+  };
+  return (
+    <button type="button" onClick={() => void open()} className="mt-1 flex max-w-full items-center gap-2 rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-left text-sm text-ink">
+      <span>📎</span><span className="min-w-0 truncate">{m.file.name}</span>
+      <span className="shrink-0 text-[11px] text-muted">{busy ? "…" : `${Math.max(1, Math.round(m.file.size / 1024))} KB`}</span>
+    </button>
+  );
+}
+
 function RoomView() {
   const boot = useChat((s) => s.boot)!;
   const rooms = useChat((s) => s.rooms);
@@ -462,11 +548,19 @@ function RoomView() {
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState("");
   const [busy, setBusy] = useState("");
+  const pins = useChat((s) => s.pins);
+  const replyTo = useChat((s) => s.replyTo);
+  const [gifOpen, setGifOpen] = useState(false);
+  const [attach, setAttach] = useState<{ name: string; data: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
+  const [pinsOpen, setPinsOpen] = useState(false);
+  const docRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
   const opened = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
   const person = (id: string) => boot.people.find((p) => p.id === id);
+  const lastMineId = [...messages].reverse().find((m) => m.authorId === me.personId && !m.deleted)?.id ?? 0;
   const firstUnreadId = unreadAfter == null ? null
     : messages.find((m) => m.id > unreadAfter && m.authorId !== me.personId && !m.deleted)?.id ?? null;
   useEffect(() => {
@@ -494,9 +588,9 @@ function RoomView() {
   if (!room) return <Header title="Chat" onBack={() => void openRoom(null)} />;
   const title = roomTitle(room, me.personId, boot.people);
   const submit = async () => {
-    if ((!text.trim() && !photo) || busy) return;
+    if ((!text.trim() && !photo && !attach) || busy) return;
     setBusy("sending");
-    try { await sendMessage(text.trim(), photo); setText(""); setPhoto(""); setBusy(""); }
+    try { await sendMessage(text.trim(), photo, attach ? { file: attach } : {}); setText(""); setPhoto(""); setAttach(null); setBusy(""); }
     catch (e) { setBusy(e instanceof Error ? e.message : "Couldn't send"); }
   };
   return (
@@ -508,6 +602,16 @@ function RoomView() {
         )} />
       {room.id === "all-managers" && meetUrl ? (
         <MeetingBar url={meetUrl} />
+      ) : null}
+      {pins.length ? (
+        <div className="border-b border-white/10 bg-surface px-3 py-1.5 text-xs">
+          <button type="button" onClick={() => setPinsOpen(!pinsOpen)} className="flex w-full items-center gap-2 text-left text-muted">
+            <span>📌</span>
+            <span className="min-w-0 flex-1 truncate text-ink">{pins[0].text}</span>
+            <span>{pins.length > 1 ? `${pins.length} pinned ${pinsOpen ? "▲" : "▼"}` : ""}</span>
+          </button>
+          {pinsOpen ? pins.slice(1).map((p) => <p key={p.id} className="mt-1 truncate pl-6 text-ink">{p.text}</p>) : null}
+        </div>
       ) : null}
       <div ref={listRef} className="relative min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
         {messages.map((m, i) => {
@@ -532,15 +636,47 @@ function RoomView() {
                       <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-muted line-through">{m.body || "(photo)"}</p>
                       <p className="text-[11px] italic text-muted">Deleted by {person(m.deletedBy ?? "")?.name ?? m.deletedBy}, {m.deletedAt ? time(m.deletedAt) : ""}</p>
                     </>
+                  ) : editing?.id === m.id ? (
+                    <div className="mt-1 space-y-1">
+                      <textarea value={editing.text} rows={2} maxLength={2000} autoFocus
+                        onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                        className="w-full rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-base text-ink sm:text-sm" />
+                      <div className="flex gap-3 text-xs">
+                        <button type="button" className="font-semibold text-honey"
+                          onClick={() => { const next = editing.text.trim(); if (next) void editMessage(m.id, next).then(() => setEditing(null)).catch((e) => setBusy(e instanceof Error ? e.message : "Couldn't save")); }}>Save</button>
+                        <button type="button" className="text-muted" onClick={() => setEditing(null)}>Cancel</button>
+                      </div>
+                    </div>
                   ) : (
-                    <MessageText body={m.body} people={boot.people}
-                      className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`} />
+                    <>
+                      {m.replyTo ? (
+                        <p className="mb-0.5 truncate border-l-2 border-white/25 pl-2 text-[11px] text-muted">
+                          {person(m.replyTo.authorId)?.name ?? "Someone"}: {m.replyTo.text || "(attachment)"}
+                        </p>
+                      ) : null}
+                      <MessageText body={m.body} people={boot.people}
+                        className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`} />
+                      {m.editedAt ? <span className="text-[10px] text-muted"> (edited)</span> : null}
+                    </>
                   )}
+                  {!m.deleted && m.gifUrl ? <img src={m.gifUrl} alt="GIF" loading="lazy" className="mt-1 h-auto max-h-48 w-auto max-w-full rounded-sm" /> : null}
+                  {!m.deleted ? <FileChip m={m} /> : null}
+                  {!m.deleted && m.pinned ? <p className="text-[10px] text-muted">📌 Pinned</p> : null}
                   {!m.deleted ? <Photo m={m} owner={owner} /> : null}
                   {!m.deleted ? <Reactions m={m} meId={me.personId} people={boot.people} /> : null}
-                  {!m.deleted && (mineMsg || owner) ? (
-                    <button type="button" className="text-[11px] text-muted hover:text-honey"
-                      onClick={() => { if (confirm("Delete this message for everyone?")) void deleteMessage(m.id); }}>Delete</button>
+                  {!m.deleted ? (
+                    <div className="flex flex-wrap gap-x-3 text-[11px] text-muted">
+                      {room.canPost ? <button type="button" className="hover:text-ink" onClick={() => setReplyTo(m)}>Reply</button> : null}
+                      {mineMsg && m.body ? <button type="button" className="hover:text-ink" onClick={() => setEditing({ id: m.id, text: m.body })}>Edit</button> : null}
+                      {owner ? <button type="button" className="hover:text-ink" onClick={() => void pinMessage(m.id, !m.pinned)}>{m.pinned ? "Unpin" : "Pin"}</button> : null}
+                      {mineMsg || owner ? (
+                        <button type="button" className="hover:text-honey"
+                          onClick={() => { if (confirm("Delete this message for everyone?")) void deleteMessage(m.id); }}>Delete</button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {room.kind === "dm" && mineMsg && m.id === lastMineId && room.otherRead >= m.id ? (
+                    <p className="text-[10px] text-muted">Seen</p>
                   ) : null}
                 </div>
               </div>
@@ -557,6 +693,19 @@ function RoomView() {
               <button type="button" className="text-xs text-muted underline" onClick={() => setPhoto("")}>Remove</button>
             </div>
           ) : null}
+          {replyTo ? (
+            <div className="mb-2 flex items-center gap-2 rounded-sm border-l-2 border-honey bg-surface px-2 py-1 text-xs text-muted">
+              <span className="min-w-0 flex-1 truncate">Replying to {person(replyTo.authorId)?.name ?? "message"}: {replyTo.body || "(attachment)"}</span>
+              <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply">✕</button>
+            </div>
+          ) : null}
+          {attach ? (
+            <div className="mb-2 flex items-center gap-2 text-xs text-ink">
+              <span className="min-w-0 truncate">📎 {attach.name}</span>
+              <button type="button" className="text-muted underline" onClick={() => setAttach(null)}>Remove</button>
+            </div>
+          ) : null}
+          {gifOpen ? <GifPicker onClose={() => setGifOpen(false)} onPick={(url) => { setGifOpen(false); void sendMessage(text.trim(), "", { gif: url }).then(() => setText("")).catch((e) => setBusy(e instanceof Error ? e.message : "Couldn't send")); }} /> : null}
           {suggestions.length ? (
             <div className="mb-2 overflow-hidden rounded-sm border border-white/15 bg-surface">
               {suggestions.map((p) => (
@@ -572,6 +721,12 @@ function RoomView() {
             <button type="button" onClick={() => fileRef.current?.click()} className="px-1 pb-2 text-lg text-muted hover:text-ink" aria-label="Add photo">📷</button>
             <input ref={fileRef} type="file" accept="image/*" hidden
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void compressPhoto(f).then(setPhoto).catch((err) => setBusy(err.message)); }} />
+            <button type="button" onClick={() => docRef.current?.click()} className="px-1 pb-2 text-lg text-muted hover:text-ink" aria-label="Attach a file">📎</button>
+            <input ref={docRef} type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                if (f.size > 1_500_000) { setBusy("File is too large (limit about 1.5 MB)"); return; }
+                void readFileAsBase64(f).then((data) => { setBusy(""); setAttach({ name: f.name, data }); }).catch((err) => setBusy(err.message)); }} />
+            {boot.gifEnabled ? <button type="button" onClick={() => setGifOpen(!gifOpen)} className="px-1 pb-2 text-xs font-bold text-muted hover:text-ink" aria-label="Add a GIF">GIF</button> : null}
             <textarea value={text} rows={1} maxLength={2000} placeholder="Type a message  (@ to mention someone)"
               onChange={(e) => { setText(e.target.value); noteTyping(); }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}

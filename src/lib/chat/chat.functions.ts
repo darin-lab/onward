@@ -6,6 +6,7 @@ import type {
   ChatSearchHit,
   ChatBootstrap,
   ChatMessageInfo,
+  ChatPin,
   ChatPollInput,
   ChatPollResult,
   ChatSettings,
@@ -56,6 +57,8 @@ export const chatBootstrap = createServerFn({ method: "GET" }).handler(async ():
     presence: await s.buildPresence(sql),
     avatars: await s.loadAvatars(sql),
     meetUrl: await s.getSetting(sql, "meet_url", ""),
+    gifEnabled: Boolean(process.env.GIPHY_API_KEY?.trim()),
+    dnd: await s.loadDnd(sql, viewer.personId),
     vapidPublicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? "",
     serverTime: new Date().toISOString(),
   };
@@ -80,11 +83,13 @@ export const chatPoll = createServerFn({ method: "POST" })
     let messages: ChatMessageInfo[] = [];
     let changed: ChatMessageInfo[] = [];
     let typing: string[] = [];
+    let pins: ChatPin[] = [];
     if (data.roomId && rooms.some((r) => r.id === data.roomId)) {
       const out = await s.listMessages(sql, viewer, data.roomId, data.after, data.since);
       messages = out.messages;
       changed = out.changed;
       typing = await s.typingIn(sql, data.roomId, viewer.personId);
+      pins = await s.listPins(sql, data.roomId, viewer);
     }
     return {
       rooms,
@@ -92,20 +97,39 @@ export const chatPoll = createServerFn({ method: "POST" })
       messages,
       changed,
       typing,
+      pins,
       avatarStamp: await s.avatarStamp(sql),
       meetUrl: await s.getSetting(sql, "meet_url", ""),
       serverTime: startedAt,
     };
   });
 
+const GIF_HOST = /^https:\/\/media[0-9]*\.giphy\.com\//;
+const FILE_TYPES: Record<string, string> = {
+  pdf: "application/pdf", doc: "application/msword", xls: "application/vnd.ms-excel", csv: "text/csv", txt: "text/plain",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
 export const chatSend = createServerFn({ method: "POST" })
   .validator((input: unknown) => {
-    const d = (input ?? {}) as { roomId?: unknown; body?: unknown; photo?: unknown };
+    const d = (input ?? {}) as { roomId?: unknown; body?: unknown; photo?: unknown; gif?: unknown; file?: unknown; replyTo?: unknown };
     const body = str(d.body, 2000).trim();
     const photo = typeof d.photo === "string" && d.photo.startsWith("data:image/") ? d.photo : "";
     if (photo.length > 300_000) throw new Error("Photo is too large");
-    if (!body && !photo) throw new Error("Nothing to send");
-    return { roomId: str(d.roomId, 200), body, photo };
+    const gif = typeof d.gif === "string" && GIF_HOST.test(d.gif) && d.gif.length < 600 ? d.gif : "";
+    let file: { name: string; mime: string; data: string } | null = null;
+    const f = d.file as { name?: unknown; data?: unknown } | null | undefined;
+    if (f && typeof f.name === "string" && typeof f.data === "string") {
+      const name = f.name.replace(/[^\w .()\-]/g, "_").slice(0, 120) || "file";
+      const mime = FILE_TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
+      if (!mime) throw new Error("That file type isn't supported. Use PDF, Word, Excel, CSV or text.");
+      if (f.data.length > 2_200_000) throw new Error("File is too large (limit about 1.5 MB)");
+      file = { name, mime, data: f.data };
+    }
+    if (!body && !photo && !gif && !file) throw new Error("Nothing to send");
+    const replyTo = Number.isFinite(Number(d.replyTo)) && Number(d.replyTo) > 0 ? Number(d.replyTo) : null;
+    return { roomId: str(d.roomId, 200), body, photo, gif, file, replyTo };
   })
   .handler(async ({ data }) => {
     const s = await import("@/lib/chat/chat.server");
@@ -118,11 +142,22 @@ export const chatSend = createServerFn({ method: "POST" })
       photoId = `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       await sql.query("insert into chat_photos (id, data) values ($1, $2)", [photoId, data.photo]);
     }
+    let fileId: string | null = null;
+    if (data.file) {
+      fileId = `f_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      await sql.query("insert into chat_files (id, name, mime, size, data) values ($1, $2, $3, $4, $5)",
+        [fileId, data.file.name, data.file.mime, Math.round(data.file.data.length * 0.75), data.file.data]);
+    }
+    let replyTo: number | null = null;
+    if (data.replyTo) {
+      const ok = await sql.query("select 1 from chat_messages where id = $1 and room_id = $2", [data.replyTo, room.id]);
+      if (ok.length) replyTo = data.replyTo;
+    }
     const directory = await s.loadDirectory(sql);
     const mentioned = s.findMentions(data.body, directory).filter((id) => id !== viewer.personId);
     const rows = await sql.query<{ id: number }>(
-      "insert into chat_messages (room_id, author_id, body, photo_id, mentions) values ($1, $2, $3, $4, $5) returning id",
-      [room.id, viewer.personId, data.body, photoId, mentioned.length ? `,${mentioned.join(",")},` : ""],
+      "insert into chat_messages (room_id, author_id, body, photo_id, mentions, reply_to, gif_url, file_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
+      [room.id, viewer.personId, data.body, photoId, mentioned.length ? `,${mentioned.join(",")},` : "", replyTo, data.gif || null, fileId],
     );
     const id = Number(rows[0].id);
     await sql.query(
@@ -157,6 +192,7 @@ export const chatSend = createServerFn({ method: "POST" })
       data.body,
       Boolean(photoId),
       mentioned,
+      data.gif ? "Sent a GIF" : data.file ? `Sent ${data.file.name}` : "",
     );
     const rt = await realtime();
     await rt.pingUsers(await rt.roomAudience(sql, room.id), { type: "room", roomId: room.id });
@@ -260,6 +296,12 @@ export const chatRead = createServerFn({ method: "POST" })
         where room_id = $1 and person_id = $2`,
       [data.roomId, viewer.personId, data.upTo],
     );
+    // Direct messages show "Seen", so tell the other person their screen should refresh.
+    const room = await sql.query<{ kind: string }>("select kind from chat_rooms where id = $1", [data.roomId]);
+    if (room[0]?.kind === "dm") {
+      const rt = await realtime();
+      await rt.pingUsers(await rt.roomAudience(sql, data.roomId), { type: "room", roomId: data.roomId });
+    }
     return { ok: true as const };
   });
 
@@ -516,3 +558,113 @@ export const chatRealtimeToken = createServerFn({ method: "POST" }).handler(asyn
   const token = await (await realtime()).createToken(viewer.personId);
   return { token: (token ?? null) as Record<string, unknown> | null };
 });
+
+/** Edit your own message. Mentions are recomputed; the message shows "(edited)". */
+export const chatEdit = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const d = (input ?? {}) as { id?: unknown; body?: unknown };
+    const body = str(d.body, 2000).trim();
+    if (!body) throw new Error("A message can't be empty");
+    return { id: Number(d.id), body };
+  })
+  .handler(async ({ data }) => {
+    const s = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await s.requireChat();
+    const directory = await s.loadDirectory(sql);
+    const mentioned = s.findMentions(data.body, directory).filter((id) => id !== viewer.personId);
+    const rows = await sql.query<{ room_id: string }>(
+      `update chat_messages set body = $3, mentions = $4, edited_at = now(), touched_at = now()
+        where id = $1 and author_id = $2 and deleted_at is null returning room_id`,
+      [data.id, viewer.personId, data.body, mentioned.length ? `,${mentioned.join(",")},` : ""],
+    );
+    if (rows[0]) {
+      const rt = await realtime();
+      await rt.pingUsers(await rt.roomAudience(sql, rows[0].room_id), { type: "room", roomId: rows[0].room_id });
+    }
+    return { ok: rows.length > 0 };
+  });
+
+/** Darin and Arun pin or unpin a message in any room they can see. */
+export const chatPin = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const d = (input ?? {}) as { id?: unknown; pinned?: unknown };
+    return { id: Number(d.id), pinned: d.pinned !== false };
+  })
+  .handler(async ({ data }) => {
+    const { requireChatOwner } = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await requireChatOwner();
+    const rows = await sql.query<{ room_id: string }>(
+      `update chat_messages set pinned_at = case when $2 then now() else null end,
+              pinned_by = case when $2 then $3 else null end, touched_at = now()
+        where id = $1 and deleted_at is null returning room_id`,
+      [data.id, data.pinned, viewer.personId],
+    );
+    if (rows[0]) {
+      const rt = await realtime();
+      await rt.pingUsers(await rt.roomAudience(sql, rows[0].room_id), { type: "room", roomId: rows[0].room_id });
+    }
+    return { ok: rows.length > 0 };
+  });
+
+/** One attached file, loaded on demand like photos. */
+export const chatFile = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ id: str((input as { id?: unknown })?.id, 100) }))
+  .handler(async ({ data }) => {
+    const s = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await s.requireChat();
+    const rows = await sql.query<{ name: string; mime: string; data: string; expired_at: string | null; room_id: string }>(
+      `select f.name, f.mime, f.data, f.expired_at, m.room_id
+         from chat_files f join chat_messages m on m.file_id = f.id where f.id = $1 limit 1`,
+      [data.id],
+    );
+    const row = rows[0];
+    if (!row || row.expired_at || !row.data) return { data: "", name: "", mime: "" };
+    const rooms = await s.buildRooms(sql, viewer);
+    if (!rooms.some((r) => r.id === row.room_id)) return { data: "", name: "", mime: "" };
+    return { data: row.data, name: row.name, mime: row.mime };
+  });
+
+/** GIPHY search, run on the server so the key never reaches the phone. */
+export const chatGifSearch = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ q: str((input as { q?: unknown })?.q, 80).trim() }))
+  .handler(async ({ data }): Promise<{ gifs: { id: string; url: string; preview: string }[] }> => {
+    const { requireChat } = await import("@/lib/chat/chat.server");
+    await requireChat();
+    const key = process.env.GIPHY_API_KEY?.trim();
+    if (!key) return { gifs: [] };
+    const base = data.q ? "https://api.giphy.com/v1/gifs/search" : "https://api.giphy.com/v1/gifs/trending";
+    const url = `${base}?api_key=${encodeURIComponent(key)}&limit=24&rating=g&lang=en${data.q ? `&q=${encodeURIComponent(data.q)}` : ""}`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) return { gifs: [] };
+      const json = (await res.json()) as { data?: { id: string; images?: Record<string, { url?: string }> }[] };
+      const gifs = (json.data ?? []).flatMap((g) => {
+        const full = g.images?.fixed_height?.url ?? g.images?.original?.url;
+        const preview = g.images?.fixed_width_small?.url ?? g.images?.fixed_height_small?.url ?? full;
+        return full && preview && GIF_HOST.test(full) ? [{ id: g.id, url: full, preview }] : [];
+      });
+      return { gifs };
+    } catch {
+      return { gifs: [] };
+    }
+  });
+
+/** Quiet hours (Pacific hours 0-23). Null turns them off. */
+export const chatDndSave = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const d = (input ?? {}) as { start?: unknown; end?: unknown };
+    const hour = (v: unknown) => (v === null || v === undefined || v === "" ? null : Math.min(23, Math.max(0, Math.floor(Number(v)))));
+    const start = hour(d.start);
+    const end = hour(d.end);
+    return start === null || end === null || Number.isNaN(start) || Number.isNaN(end) ? { start: null, end: null } : { start, end };
+  })
+  .handler(async ({ data }) => {
+    const { requireChat } = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await requireChat();
+    await sql.query(
+      `insert into chat_profiles (person_id, dnd_start, dnd_end) values ($1, $2, $3)
+       on conflict (person_id) do update set dnd_start = $2, dnd_end = $3`,
+      [viewer.personId, data.start, data.end],
+    );
+    return { ok: true as const };
+  });
