@@ -7,6 +7,8 @@ self.addEventListener("push", (event) => {
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      // Tell every open tab (even a background one) so it can play the message sound.
+      for (const c of list) c.postMessage({ type: "play-message", roomId: data.roomId || "" });
       // If the app is open and in front, it plays its own sound and pop-up.
       if (list.some((c) => c.visibilityState === "visible" && c.focused)) return;
       return self.registration.showNotification(data.title || "Driven Chat", {

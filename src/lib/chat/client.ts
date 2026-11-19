@@ -93,7 +93,7 @@ async function poll() {
       for (const [id, p] of Object.entries(res.presence)) {
         if (id === prev.boot?.me.personId) continue;
         const before = prev.presence[id]?.state ?? "offline";
-        if (before === "offline" && p.state !== "offline") playSound("signon");
+        if (before === "offline" && p.state !== "offline") playSound("bell");
         else if (before !== "offline" && p.state === "offline") playSound("signoff");
       }
     }
@@ -167,6 +167,8 @@ function onActivity() {
 }
 function onWorkerMessage(e: MessageEvent) {
   if (e.data?.type === "open-room") void openRoom(String(e.data.roomId));
+  // A push arrived while this tab is in the background: the page isn't polling, so play the sound here.
+  if (e.data?.type === "play-message" && document.visibilityState === "hidden") playSound("message");
 }
 
 export async function startChat() {
