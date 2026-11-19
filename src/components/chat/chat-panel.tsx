@@ -92,7 +92,7 @@ function ChatPanel() {
   const activeRoom = useChat((s) => s.activeRoom);
   const [view, setView] = useState<"main" | "new" | "settings">("main");
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-canvas sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[400px] sm:border-l sm:border-white/10">
+    <div className="fixed inset-0 z-40 flex w-full max-w-full flex-col overflow-x-hidden bg-canvas sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[400px] sm:border-l sm:border-white/10">
       <div className="h-1 bg-honey" />
       {view === "new" ? <NewRoom onDone={() => setView("main")} /> :
         view === "settings" ? <Settings onDone={() => setView("main")} /> :
@@ -315,7 +315,7 @@ function Photo({ m, owner }: { m: ChatMessageInfo; owner: boolean }) {
   if (m.photoState === "expired") return <p className="mt-1 text-xs italic text-muted">photo expired</p>;
   return (
     <div className="mt-1">
-      {src ? <img src={src} alt="" onClick={() => setBig(true)} className="max-h-60 cursor-zoom-in rounded-sm" /> : <div className="h-24 w-32 animate-pulse rounded-sm bg-raised" />}
+      {src ? <img src={src} alt="" onClick={() => setBig(true)} className="h-auto max-h-60 w-auto max-w-full cursor-zoom-in rounded-sm" /> : <div className="h-24 w-32 animate-pulse rounded-sm bg-raised" />}
       {owner ? (
         <button type="button" className="mt-1 text-[11px] text-muted underline"
           onClick={() => { const next = !kept; setKept(next); void chatKeepPhoto({ data: { id: m.photoId!, keep: next } }); }}>
@@ -366,7 +366,7 @@ function RoomView() {
       {room.id === "all-managers" && meetUrl ? (
         <a href={meetUrl} target="_blank" rel="noreferrer" className="block bg-honey px-3 py-2 text-center text-sm font-semibold text-white">Join meeting</a>
       ) : null}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
         {messages.map((m, i) => {
           const a = person(m.authorId);
           const mineMsg = m.authorId === me.personId;
@@ -403,7 +403,7 @@ function RoomView() {
         <div className="border-t border-white/10 p-3">
           {photo ? (
             <div className="mb-2 flex items-center gap-2">
-              <img src={photo} alt="" className="h-14 rounded-sm" />
+              <img src={photo} alt="" className="h-14 max-w-full rounded-sm object-contain" />
               <button type="button" className="text-xs text-muted underline" onClick={() => setPhoto("")}>Remove</button>
             </div>
           ) : null}
