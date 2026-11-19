@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import {
   chatAway, chatBootstrap, chatCreateRoom, chatDelete, chatOpenDm, chatPoll, chatPresence, chatPushSubscribe,
-  chatRead, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
+  chatRead, chatReact, chatSend, chatSetAvatar, chatStatus, chatTyping, chatMute,
 } from "@/lib/chat/chat.functions";
 import type { ChatState, ChatBootstrap, ChatMessageInfo, ChatPerson, ChatPresence, ChatRoomInfo, ChatStatus } from "@/lib/chat/types";
 
@@ -17,6 +17,8 @@ type State = {
   meetUrl: string;
   open: boolean;
   activeRoom: string | null;
+  /** Newest message already read when the open room was opened; drives the "new messages" line. */
+  unreadAfter: number | null;
   messages: ChatMessageInfo[];
   typing: string[];
   popup: Popup;
@@ -26,7 +28,7 @@ type State = {
 
 export const useChat = create<State>(() => ({
   status: null, boot: null, rooms: [], presence: {}, avatars: {}, meetUrl: "",
-  open: false, activeRoom: null, messages: [], typing: [], popup: null,
+  open: false, activeRoom: null, unreadAfter: null, messages: [], typing: [], popup: null,
   sound: readSound(), error: "",
 }));
 const set = useChat.setState;
@@ -102,13 +104,13 @@ async function poll() {
       for (const room of res.rooms) {
         const old = prev.rooms.find((r) => r.id === room.id);
         const reading = prev.open && prev.activeRoom === room.id && visible();
-        if (old && room.unread > old.unread && !reading && !room.muted && room.last) {
+        if (old && ((room.unread > old.unread && !room.muted) || room.mentions > old.mentions) && !reading && room.last) {
           playSound("message");
           set({
             popup: {
               roomId: room.id,
               title: roomTitle(room, prev.boot?.me.personId ?? "", prev.boot?.people ?? []),
-              text: `${personName(room.last.authorId)}: ${room.last.text || "Sent a photo"}`.slice(0, 120),
+              text: `${personName(room.last.authorId)}${room.mentions > old.mentions ? " mentioned you" : ""}: ${room.last.text || "Sent a photo"}`.slice(0, 120),
             },
           });
         }
@@ -214,7 +216,11 @@ export function setOpen(open: boolean) {
 
 export async function openRoom(roomId: string | null) {
   lastId = 0;
-  set({ activeRoom: roomId, messages: [], typing: [], open: true, popup: null });
+  const room = roomId ? get().rooms.find((r) => r.id === roomId) : undefined;
+  set({
+    activeRoom: roomId, messages: [], typing: [], open: true, popup: null,
+    unreadAfter: room && room.unread > 0 ? room.lastRead : null,
+  });
   if (roomId) await poll();
 }
 
@@ -233,6 +239,11 @@ export async function sendMessage(body: string, photo: string) {
   if (!roomId) return;
   await chatSend({ data: { roomId, body, photo } });
   lastActivity = Date.now();
+  await poll();
+}
+
+export async function reactTo(id: number, emoji: string) {
+  await chatReact({ data: { id, emoji } });
   await poll();
 }
 

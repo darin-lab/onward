@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, startChat, stopChat, setOpen, openRoom, openDm, createRoom, sendMessage, deleteMessage,
-  noteTyping, muteRoom, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
-import { chatKeepPhoto, chatPhoto, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
+  noteTyping, muteRoom, reactTo, setStatus, setAway, compressPhoto, saveAvatar, enablePush, pushSupport, roomTitle, setSound } from "@/lib/chat/client";
+import { chatKeepPhoto, chatPhoto, chatSearch, chatSettingsGet, chatSettingsSave } from "@/lib/chat/chat.functions";
 import { useBoard } from "@/lib/board/store";
-import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSettings, ChatState } from "@/lib/chat/types";
+import { CHAT_EMOJI } from "@/lib/chat/types";
+import type { ChatMessageInfo, ChatPerson, ChatRoomInfo, ChatSearchHit, ChatSettings, ChatState } from "@/lib/chat/types";
 
 const dot: Record<ChatState, string> = {
   online: "bg-green-500", under_car: "bg-sky-400", with_client: "bg-purple-500", offline: "bg-neutral-600",
@@ -48,7 +49,7 @@ const dayLabel = (iso: string) => new Date(iso).toLocaleDateString([], { weekday
 export function ChatButton() {
   const status = useChat((s) => s.status);
   const open = useChat((s) => s.open);
-  const unread = useChat((s) => s.rooms.reduce((n, r) => n + (r.muted ? 0 : r.unread), 0));
+  const unread = useChat((s) => s.rooms.reduce((n, r) => n + (r.muted ? r.mentions : r.unread), 0));
   useEffect(() => { void startChat(); return () => stopChat(); }, []);
   useEffect(() => { document.title = unread > 0 ? `(${unread}) Driven Onward` : document.title.replace(/^\(\d+\) /, ""); }, [unread]);
   const viewAs = useBoard((s) => s.viewAs);
@@ -117,6 +118,15 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   const rooms = useChat((s) => s.rooms);
   const presence = useChat((s) => s.presence);
   const sound = useChat((s) => s.sound);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<ChatSearchHit[] | null>(null);
+  const searching = q.trim().length >= 2;
+  useEffect(() => {
+    if (!searching) { setHits(null); return; }
+    setHits(null);
+    const timer = setTimeout(() => { void chatSearch({ data: { q: q.trim() } }).then(setHits).catch(() => setHits([])); }, 300);
+    return () => clearTimeout(timer);
+  }, [q, searching]);
   const me = boot.me;
   const owner = me.role === "owner";
   const people = boot.people;
@@ -143,6 +153,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-raised">
       <span className="min-w-0 flex-1 truncate text-ink">{prefix}{roomTitle(r, me.personId, boot.people)}</span>
       {r.muted ? <span className="text-[10px] text-muted">muted</span> : null}
+      {r.mentions > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">@</span> : null}
       {r.unread > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">{r.unread}</span> : null}
     </button>
   );
@@ -202,7 +213,28 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         <button type="button" onClick={() => setSound(!sound)} className="text-xs text-muted hover:text-ink">{sound ? "Sound on" : "Sound off"}</button>
       </div>
       <NotifyCard />
+      <div className="border-b border-white/10 px-3 py-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search messages" aria-label="Search messages"
+          className="w-full rounded-sm border border-white/15 bg-surface px-2 py-1.5 text-sm text-ink" />
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+        {searching ? (
+          <div className="py-2">
+            {hits === null ? <p className="px-3 py-2 text-sm text-muted">Searching…</p> : hits.length === 0
+              ? <p className="px-3 py-2 text-sm text-muted">No messages found.</p>
+              : hits.map((h) => (
+                <button key={h.id} type="button" onClick={() => { setQ(""); void openRoom(h.roomId); }}
+                  className="block w-full px-3 py-2 text-left hover:bg-raised">
+                  <span className="flex items-baseline gap-2 text-[11px] text-muted">
+                    <b className="font-bold text-ink">{h.roomTitle}</b>
+                    <span>{boot.people.find((p) => p.id === h.authorId)?.name ?? h.authorId}</span>
+                    <span className="ml-auto">{dayLabel(h.createdAt)}</span>
+                  </span>
+                  <span className="mt-0.5 block break-words text-sm text-ink">{h.text}</span>
+                </button>
+              ))}
+          </div>
+        ) : (<>
         {group("Channels", channels.map((r) => roomRow(r, "# ")))}
         {groups.length ? group("Group chats", groups.map((r) => roomRow(r))) : null}
         {dms.length ? group("Recent direct messages", dms.map((r) => roomRow(r))) : null}
@@ -210,6 +242,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
         {shops.map(([shop, list]) => folder(shop, byRole(list), true))}
         {owner && others.length ? group("All conversations (read-only)", others.map((r) => roomRow(r)))
         : null}
+        </>)}
       </div>
       <p className="border-t border-white/10 px-3 py-2 text-[11px] text-muted">
         Messages are company records.
@@ -331,6 +364,53 @@ function Photo({ m, owner }: { m: ChatMessageInfo; owner: boolean }) {
   );
 }
 
+/** Message text with @Name pieces picked out so they stand out. */
+function MessageText({ body, people, className }: { body: string; people: ChatPerson[]; className: string }) {
+  const parts = useMemo(() => {
+    const firstCount = new Map<string, number>();
+    for (const p of people) { const f = p.name.split(" ")[0].toLowerCase(); firstCount.set(f, (firstCount.get(f) ?? 0) + 1); }
+    const names = new Set<string>();
+    for (const p of people) {
+      names.add(p.name);
+      const first = p.name.split(" ")[0];
+      if (firstCount.get(first.toLowerCase()) === 1) names.add(first);
+    }
+    const esc = [...names].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (esc.length === 0) return [body];
+    const re = new RegExp(`(@(?:${esc.join("|")})(?![A-Za-z0-9]))`, "gi");
+    return body.split(re);
+  }, [body, people]);
+  return (
+    <p className={className}>
+      {parts.map((part, i) => (part.startsWith("@") && i % 2 === 1
+        ? <span key={i} className="rounded-sm bg-honey/20 px-0.5 font-semibold text-honey">{part}</span>
+        : <span key={i}>{part}</span>))}
+    </p>
+  );
+}
+
+function Reactions({ m, meId, people }: { m: ChatMessageInfo; meId: string; people: ChatPerson[] }) {
+  const [open, setOpen] = useState(false);
+  const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? id;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {m.reactions.map((r) => (
+        <button key={r.emoji} type="button" onClick={() => void reactTo(m.id, r.emoji)}
+          title={r.by.map(nameOf).join(", ")}
+          className={`rounded-full border px-2 py-0.5 text-xs ${r.by.includes(meId) ? "border-honey bg-honey/15 text-ink" : "border-white/15 text-muted"}`}>
+          {r.emoji} {r.by.length}
+        </button>
+      ))}
+      {open ? CHAT_EMOJI.map((e) => (
+        <button key={e} type="button" onClick={() => { setOpen(false); void reactTo(m.id, e); }}
+          className="rounded-full px-1.5 py-0.5 text-sm hover:bg-raised" aria-label={`React ${e}`}>{e}</button>
+      )) : (
+        <button type="button" onClick={() => setOpen(true)} className="rounded-full px-1.5 py-0.5 text-[11px] text-muted hover:text-ink" aria-label="Add a reaction">☺ +</button>
+      )}
+    </div>
+  );
+}
+
 function RoomView() {
   const boot = useChat((s) => s.boot)!;
   const rooms = useChat((s) => s.rooms);
@@ -338,6 +418,7 @@ function RoomView() {
   const messages = useChat((s) => s.messages);
   const typing = useChat((s) => s.typing);
   const meetUrl = useChat((s) => s.meetUrl);
+  const unreadAfter = useChat((s) => s.unreadAfter);
   const room = rooms.find((r) => r.id === roomId);
   const me = boot.me;
   const owner = me.role === "owner";
@@ -345,9 +426,30 @@ function RoomView() {
   const [photo, setPhoto] = useState("");
   const [busy, setBusy] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const dividerRef = useRef<HTMLDivElement>(null);
+  const opened = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
   const person = (id: string) => boot.people.find((p) => p.id === id);
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, typing.length]);
+  const firstUnreadId = unreadAfter == null ? null
+    : messages.find((m) => m.id > unreadAfter && m.authorId !== me.personId && !m.deleted)?.id ?? null;
+  useEffect(() => {
+    if (messages.length === 0) return;
+    // First load of a room: land on the "new messages" line if there is one, else the bottom.
+    if (opened.current !== roomId) {
+      opened.current = roomId;
+      (dividerRef.current ?? endRef.current)?.scrollIntoView({ block: dividerRef.current ? "start" : "end" });
+      return;
+    }
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, typing.length, roomId]);
+  // @mention picker: shows while the text ends in "@" plus part of a name.
+  const at = text.lastIndexOf("@");
+  const mentionQuery = at >= 0 && (at === 0 || /\s/.test(text[at - 1])) && !text.slice(at).includes("\n") && text.length - at <= 24
+    ? text.slice(at + 1).trimStart().toLowerCase() : null;
+  const suggestions = mentionQuery === null ? [] : boot.people
+    .filter((p) => p.id !== me.personId && p.name.toLowerCase().includes(mentionQuery) && !text.slice(at).toLowerCase().startsWith("@" + p.name.toLowerCase() + " "))
+    .slice(0, 5);
+  const pick = (p: ChatPerson) => setText(text.slice(0, at) + "@" + p.name + " ");
   if (!room) return <Header title="Chat" onBack={() => void openRoom(null)} />;
   const title = roomTitle(room, me.personId, boot.people);
   const submit = async () => {
@@ -371,12 +473,18 @@ function RoomView() {
           const a = person(m.authorId);
           const mineMsg = m.authorId === me.personId;
           const newDay = i === 0 || dayLabel(messages[i - 1].createdAt) !== dayLabel(m.createdAt);
+          const mentionsMe = m.mentions.includes(me.personId);
           return (
             <div key={m.id}>
+              {m.id === firstUnreadId ? (
+                <div ref={dividerRef} className="my-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-honey">
+                  <span className="h-px flex-1 bg-honey" />New messages<span className="h-px flex-1 bg-honey" />
+                </div>
+              ) : null}
               {newDay ? <p className="mb-2 text-center text-[11px] uppercase tracking-widest text-muted">{dayLabel(m.createdAt)}</p> : null}
               <div className="flex gap-2">
                 <Avatar person={a} size={32} />
-                <div className="min-w-0 flex-1">
+                <div className={`min-w-0 flex-1 ${mentionsMe ? "rounded-sm border-l-2 border-honey bg-honey/10 pl-2" : ""}`}>
                   <p className="text-xs text-muted"><span className="text-ink">{a?.name ?? m.authorId}</span> · {time(m.createdAt)}</p>
                   {m.deleted ? (
                     <>
@@ -384,9 +492,11 @@ function RoomView() {
                       <p className="text-[11px] italic text-muted">Deleted by {person(m.deletedBy ?? "")?.name ?? m.deletedBy}, {m.deletedAt ? time(m.deletedAt) : ""}</p>
                     </>
                   ) : (
-                    <p className={`whitespace-pre-wrap break-words text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`}>{m.body}</p>
+                    <MessageText body={m.body} people={boot.people}
+                      className={`whitespace-pre-wrap break-words text-sm ${m.body.startsWith("Auto-response:") ? "italic text-muted" : "text-ink"}`} />
                   )}
                   {!m.deleted ? <Photo m={m} owner={owner} /> : null}
+                  {!m.deleted ? <Reactions m={m} meId={me.personId} people={boot.people} /> : null}
                   {!m.deleted && (mineMsg || owner) ? (
                     <button type="button" className="text-[11px] text-muted hover:text-honey"
                       onClick={() => { if (confirm("Delete this message for everyone?")) void deleteMessage(m.id); }}>Delete</button>
@@ -407,12 +517,22 @@ function RoomView() {
               <button type="button" className="text-xs text-muted underline" onClick={() => setPhoto("")}>Remove</button>
             </div>
           ) : null}
+          {suggestions.length ? (
+            <div className="mb-2 overflow-hidden rounded-sm border border-white/15 bg-surface">
+              {suggestions.map((p) => (
+                <button key={p.id} type="button" onClick={() => pick(p)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-raised">
+                  <Avatar person={p} size={22} /><span className="text-ink">{p.name}</span>
+                  <span className="text-[11px] text-muted">{p.shopName || p.title}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           {busy && busy !== "sending" ? <p className="mb-1 text-xs text-honey">{busy}</p> : null}
           <div className="flex items-end gap-2">
             <button type="button" onClick={() => fileRef.current?.click()} className="px-1 pb-2 text-lg text-muted hover:text-ink" aria-label="Add photo">📷</button>
             <input ref={fileRef} type="file" accept="image/*" hidden
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void compressPhoto(f).then(setPhoto).catch((err) => setBusy(err.message)); }} />
-            <textarea value={text} rows={1} maxLength={2000} placeholder="Type a message"
+            <textarea value={text} rows={1} maxLength={2000} placeholder="Type a message  (@ to mention someone)"
               onChange={(e) => { setText(e.target.value); noteTyping(); }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
               className="max-h-28 min-w-0 flex-1 resize-none rounded-sm border border-white/15 bg-surface px-2 py-2 text-sm text-ink" />

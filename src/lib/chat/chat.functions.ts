@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { CHAT_EMOJI } from "@/lib/chat/types";
 import type {
+  ChatSearchHit,
   ChatBootstrap,
   ChatMessageInfo,
   ChatPollInput,
@@ -65,6 +67,7 @@ export const chatPoll = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }): Promise<ChatPollResult> => {
+    const startedAt = new Date().toISOString();
     const s = await import("@/lib/chat/chat.server");
     const { viewer, sql } = await s.requireChat();
     await s.touchPresence(sql, viewer.personId);
@@ -87,7 +90,7 @@ export const chatPoll = createServerFn({ method: "POST" })
       typing,
       avatarStamp: await s.avatarStamp(sql),
       meetUrl: await s.getSetting(sql, "meet_url", ""),
-      serverTime: new Date().toISOString(),
+      serverTime: startedAt,
     };
   });
 
@@ -111,9 +114,11 @@ export const chatSend = createServerFn({ method: "POST" })
       photoId = `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       await sql.query("insert into chat_photos (id, data) values ($1, $2)", [photoId, data.photo]);
     }
+    const directory = await s.loadDirectory(sql);
+    const mentioned = s.findMentions(data.body, directory).filter((id) => id !== viewer.personId);
     const rows = await sql.query<{ id: number }>(
-      "insert into chat_messages (room_id, author_id, body, photo_id) values ($1, $2, $3, $4) returning id",
-      [room.id, viewer.personId, data.body, photoId],
+      "insert into chat_messages (room_id, author_id, body, photo_id, mentions) values ($1, $2, $3, $4, $5) returning id",
+      [room.id, viewer.personId, data.body, photoId, mentioned.length ? `,${mentioned.join(",")},` : ""],
     );
     const id = Number(rows[0].id);
     await sql.query(
@@ -147,6 +152,7 @@ export const chatSend = createServerFn({ method: "POST" })
       people.find((p) => p.id === viewer.personId),
       data.body,
       Boolean(photoId),
+      mentioned,
     );
     return { ok: true as const, id };
   });
@@ -164,6 +170,68 @@ export const chatDelete = createServerFn({ method: "POST" })
       [data.id, viewer.personId, viewer.role === "owner"],
     );
     return { ok: rows.length > 0 };
+  });
+
+export const chatReact = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const d = (input ?? {}) as { id?: unknown; emoji?: unknown };
+    const emoji = str(d.emoji, 8);
+    if (!(CHAT_EMOJI as readonly string[]).includes(emoji)) throw new Error("Pick one of the reactions");
+    return { id: Number(d.id), emoji };
+  })
+  .handler(async ({ data }) => {
+    const s = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await s.requireChat();
+    if (!Number.isFinite(data.id)) throw new Error("Bad message");
+    const found = await sql.query<{ room_id: string }>(
+      "select room_id from chat_messages where id = $1 and deleted_at is null", [data.id]);
+    const roomId = found[0]?.room_id;
+    if (!roomId) return { ok: false as const };
+    const rooms = await s.buildRooms(sql, viewer);
+    if (!rooms.some((r) => r.id === roomId)) throw new Error("Not allowed");
+    const removed = await sql.query(
+      "delete from chat_reactions where message_id = $1 and person_id = $2 and emoji = $3 returning message_id",
+      [data.id, viewer.personId, data.emoji]);
+    if (removed.length === 0) {
+      await sql.query(
+        "insert into chat_reactions (message_id, person_id, emoji) values ($1, $2, $3) on conflict do nothing",
+        [data.id, viewer.personId, data.emoji]);
+    }
+    await sql.query("update chat_messages set touched_at = now() where id = $1", [data.id]);
+    return { ok: true as const };
+  });
+
+export const chatSearch = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ q: str((input as { q?: unknown })?.q, 80).trim() }))
+  .handler(async ({ data }): Promise<ChatSearchHit[]> => {
+    if (data.q.length < 2) return [];
+    const s = await import("@/lib/chat/chat.server");
+    const { viewer, sql } = await s.requireChat();
+    const rooms = await s.buildRooms(sql, viewer);
+    if (rooms.length === 0) return [];
+    const people = await s.loadDirectory(sql);
+    const like = "%" + data.q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+    const rows = await sql.query<{ id: number; room_id: string; author_id: string; body: string; created_at: string }>(
+      `select id, room_id, author_id, body, created_at from chat_messages
+        where room_id = any($1::text[]) and deleted_at is null and body ilike $2
+        order by id desc limit 40`,
+      [rooms.map((r) => r.id), like],
+    );
+    const byId = new Map(rooms.map((r) => [r.id, r]));
+    return rows.map((r) => {
+      const room = byId.get(r.room_id)!;
+      const title = room.kind === "dm"
+        ? room.members.filter((m) => m !== viewer.personId).map((m) => people.find((p) => p.id === m)?.name ?? m).join(" & ") || "Direct message"
+        : room.name;
+      return {
+        id: Number(r.id),
+        roomId: r.room_id,
+        roomTitle: title,
+        authorId: r.author_id,
+        text: r.body.slice(0, 160),
+        createdAt: new Date(r.created_at).toISOString(),
+      };
+    });
   });
 
 export const chatRead = createServerFn({ method: "POST" })

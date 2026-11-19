@@ -98,6 +98,7 @@ type RoomRow = {
   last_read_id: number;
   muted: boolean;
   unread: number;
+  mention_count: number;
   last_id: number | null;
   last_author: string | null;
   last_body: string | null;
@@ -138,6 +139,10 @@ async function roomRows(sql: Sql, personId: string): Promise<RoomRow[]> {
             (select count(*) from chat_messages x
                where x.room_id = r.id and x.deleted_at is null
                  and x.author_id <> $1 and x.id > coalesce(m.last_read_id, 0)) as unread,
+            (select count(*) from chat_messages x
+               where x.room_id = r.id and x.deleted_at is null
+                 and x.author_id <> $1 and x.id > coalesce(m.last_read_id, 0)
+                 and x.mentions like '%,' || $1 || ',%') as mention_count,
             lm.id as last_id, lm.author_id as last_author, lm.body as last_body,
             lm.photo_id as last_photo, lm.created_at as last_at
        from chat_rooms r
@@ -166,6 +171,7 @@ async function joinVisibleChannels(sql: Sql, viewer: Viewer, rows: RoomRow[]) {
     room.is_member = true;
     room.last_read_id = room.last_id ?? 0;
     room.unread = 0;
+    room.mention_count = 0;
   }
 }
 
@@ -191,6 +197,8 @@ export async function buildRooms(sql: Sql, viewer: Viewer): Promise<ChatRoomInfo
     audience: room.audience,
     members: byRoom.get(room.id) ?? [],
     unread: Number(room.unread ?? 0),
+    mentions: Number(room.mention_count ?? 0),
+    lastRead: Number(room.last_read_id ?? 0),
     muted: Boolean(room.muted),
     canPost: canPostRoom(room, viewer),
     last:
@@ -284,6 +292,7 @@ type MessageRow = {
   expired_at: Date | string | null;
   keep: boolean | null;
   has_photo_row: boolean | null;
+  mentions: string | null;
 };
 
 function toMessage(row: MessageRow, viewer: Viewer): ChatMessageInfo {
@@ -303,11 +312,13 @@ function toMessage(row: MessageRow, viewer: Viewer): ChatMessageInfo {
     deletedBy: owner ? row.deleted_by : null,
     deletedAt: owner ? iso(row.deleted_at) : null,
     kept: Boolean(row.keep),
+    mentions: hide ? [] : (row.mentions ?? "").split(",").filter(Boolean),
+    reactions: [],
   };
 }
 
 const MESSAGE_SELECT = `select m.id, m.room_id, m.author_id, m.body, m.photo_id, m.created_at,
-       m.deleted_at, m.deleted_by, p.expired_at, p.keep, (p.id is not null) as has_photo_row
+       m.deleted_at, m.deleted_by, m.mentions, p.expired_at, p.keep, (p.id is not null) as has_photo_row
   from chat_messages m left join chat_photos p on p.id = m.photo_id`;
 
 /**
@@ -340,14 +351,59 @@ export async function listMessages(
   let changed: MessageRow[] = [];
   if (since && after > 0) {
     changed = await sql.query<MessageRow>(
-      `${MESSAGE_SELECT} where m.room_id = $1 and m.deleted_at > $2 and m.id <= $3 limit 100`,
+      `${MESSAGE_SELECT} where m.room_id = $1 and (m.deleted_at > $2 or m.touched_at > $2) and m.id <= $3 limit 100`,
       [roomId, since, after],
     );
   }
-  return {
-    messages: rows.map((row) => toMessage(row, viewer)),
-    changed: changed.map((row) => toMessage(row, viewer)),
-  };
+  const messages = rows.map((row) => toMessage(row, viewer));
+  const changedMessages = changed.map((row) => toMessage(row, viewer));
+  await attachReactions(sql, [...messages, ...changedMessages]);
+  return { messages, changed: changedMessages };
+}
+
+/** Fills in each message's reactions with one query for the whole batch. */
+async function attachReactions(sql: Sql, messages: ChatMessageInfo[]) {
+  const ids = messages.filter((m) => !m.deleted || m.deletedBy !== null).map((m) => m.id);
+  if (ids.length === 0) return;
+  const rows = await sql.query<{ message_id: number; emoji: string; people: string[] }>(
+    `select message_id, emoji, array_agg(person_id order by created_at) as people
+       from chat_reactions where message_id = any($1::bigint[]) group by message_id, emoji`,
+    [ids],
+  );
+  const map = new Map<number, { emoji: string; by: string[] }[]>();
+  for (const row of rows) {
+    const list = map.get(Number(row.message_id)) ?? [];
+    list.push({ emoji: row.emoji, by: row.people });
+    map.set(Number(row.message_id), list);
+  }
+  for (const m of messages) m.reactions = map.get(m.id) ?? [];
+}
+
+/** Finds @Name in a message. Full names always work; a first name works when only one person has it. */
+export function findMentions(body: string, people: ChatPerson[]): string[] {
+  const text = body.toLowerCase();
+  const found = new Set<string>();
+  const firstCount = new Map<string, number>();
+  for (const p of people) {
+    const first = p.name.split(" ")[0].toLowerCase();
+    firstCount.set(first, (firstCount.get(first) ?? 0) + 1);
+  }
+  const isEdge = (i: number) => i >= text.length || !/[a-z0-9]/.test(text[i]);
+  for (const p of people) {
+    const full = "@" + p.name.toLowerCase();
+    const first = "@" + p.name.split(" ")[0].toLowerCase();
+    const tryFind = (needle: string) => {
+      let from = 0;
+      for (;;) {
+        const at = text.indexOf(needle, from);
+        if (at < 0) return false;
+        if (isEdge(at + needle.length)) return true;
+        from = at + 1;
+      }
+    };
+    if (tryFind(full) || (firstCount.get(p.name.split(" ")[0].toLowerCase()) === 1 && tryFind(first))) found.add(p.id);
+  }
+  return [...found];
 }
 
 export async function typingIn(sql: Sql, roomId: string, personId: string): Promise<string[]> {
@@ -399,33 +455,36 @@ export async function pushToRoom(
   author: ChatPerson | undefined,
   body: string,
   hasPhoto: boolean,
+  mentioned: string[] = [],
 ) {
   try {
     const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
     const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
     if (!publicKey || !privateKey) return;
-    const subs = await sql.query<{ endpoint: string; p256dh: string; auth: string }>(
-      `select p.endpoint, p.p256dh, p.auth
+    // A mention notifies someone even if they muted the room.
+    const subs = await sql.query<{ endpoint: string; p256dh: string; auth: string; person_id: string }>(
+      `select p.endpoint, p.p256dh, p.auth, p.person_id
          from chat_members m
          join chat_push p on p.person_id = m.person_id
-        where m.room_id = $1 and m.muted = false and m.person_id <> $2`,
-      [room.id, author?.id ?? ""],
+        where m.room_id = $1 and m.person_id <> $2
+          and (m.muted = false or m.person_id = any($3::text[]))`,
+      [room.id, author?.id ?? "", mentioned],
     );
     if (subs.length === 0) return;
     const preview = (await getSetting(sql, "push_preview", "full")) === "full";
     const who = author?.name ?? "Someone";
     const text = body.trim() || (hasPhoto ? "Sent a photo" : "New message");
     const title = room.kind === "dm" ? who : (room.name ?? "Driven Chat");
-    const payload: PushPayload = {
-      title: preview ? title : "Driven Chat",
+    const payloadFor = (isMention: boolean): PushPayload => ({
+      title: preview ? (isMention ? `${who} mentioned you` : title) : "Driven Chat",
       body: preview
-        ? room.kind === "dm"
+        ? room.kind === "dm" || isMention
           ? text.slice(0, 120)
           : `${who}: ${text.slice(0, 120)}`
         : `New message from ${who}`,
       roomId: room.id,
       tag: `room-${room.id}`,
-    };
+    });
     const webpush = (await import("web-push")).default;
     webpush.setVapidDetails(process.env.VAPID_SUBJECT?.trim() || "https://drivenonward.com", publicKey, privateKey);
     await Promise.all(
@@ -433,7 +492,7 @@ export async function pushToRoom(
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            JSON.stringify(payload),
+            JSON.stringify(payloadFor(mentioned.includes(sub.person_id))),
             { TTL: 60 * 60 * 12, urgency: "high" },
           );
         } catch (error) {

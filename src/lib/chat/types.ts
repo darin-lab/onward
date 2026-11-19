@@ -28,6 +28,10 @@ export type ChatRoomInfo = {
   /** Person ids in a group or direct message. Empty for channels. */
   members: string[];
   unread: number;
+  /** Unread messages in this room that @mention the viewer. */
+  mentions: number;
+  /** Newest message the viewer has already read; used for the "new messages" line. */
+  lastRead: number;
   muted: boolean;
   canPost: boolean;
   last: { id: number; authorId: string; text: string; photo: boolean; at: string } | null;
@@ -46,6 +50,9 @@ export type ChatMessageInfo = {
   deletedBy: string | null;
   deletedAt: string | null;
   kept: boolean;
+  /** Person ids @mentioned in the message. */
+  mentions: string[];
+  reactions: { emoji: string; by: string[] }[];
 };
 
 export type ChatState = "online" | "offline" | "under_car" | "with_client";
@@ -90,4 +97,15 @@ export type ChatPollResult = {
   avatarStamp: string;
   meetUrl: string;
   serverTime: string;
+};
+
+export const CHAT_EMOJI = ["👍", "❤️", "😂", "✅", "👀"] as const;
+
+export type ChatSearchHit = {
+  id: number;
+  roomId: string;
+  roomTitle: string;
+  authorId: string;
+  text: string;
+  createdAt: string;
 };
