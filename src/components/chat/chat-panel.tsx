@@ -148,15 +148,18 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   const byRole = (list: ChatPerson[]) => [...list.filter((p) => p.role === "manager"), ...list.filter((p) => p.role !== "manager")];
   const rank = (id: string) => ((presence[id]?.state ?? "offline") === "offline" ? 2 : presence[id]?.state === "online" ? 0 : 1);
   const sorted = (list: ChatPerson[]) => [...list].sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name));
-  const roomRow = (r: ChatRoomInfo, prefix = "") => (
-    <button key={r.id} type="button" onClick={() => void openRoom(r.id)}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-raised">
-      <span className="min-w-0 flex-1 truncate text-ink">{prefix}{roomTitle(r, me.personId, boot.people)}</span>
-      {r.muted ? <span className="text-[10px] text-muted">muted</span> : null}
-      {r.mentions > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">@</span> : null}
-      {r.unread > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">{r.unread}</span> : null}
-    </button>
-  );
+  const roomRow = (r: ChatRoomInfo, prefix = "") => {
+    const unread = r.unread > 0 && !r.muted;
+    return (
+      <button key={r.id} type="button" onClick={() => void openRoom(r.id)}
+        className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left text-sm hover:bg-raised ${unread ? "border-honey bg-honey/10" : "border-transparent"}`}>
+        <span className={`min-w-0 flex-1 truncate ${unread ? "font-bold text-ink" : "text-ink"}`}>{prefix}{roomTitle(r, me.personId, boot.people)}</span>
+        {r.muted ? <span className="text-[10px] text-muted">muted{r.unread > 0 ? " ●" : ""}</span> : null}
+        {r.mentions > 0 ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">@</span> : null}
+        {unread ? <span className="rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">{r.unread > 99 ? "99+" : r.unread}</span> : null}
+      </button>
+    );
+  };
   const group = (label: string, body: React.ReactNode) => (
     <section className="py-2">
       <p className="px-3 pb-1 text-left text-[11px] font-bold uppercase tracking-widest text-ink">{label}</p>
@@ -165,6 +168,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
   );
   const personRow = (p: ChatPerson) => {
     const self = p.id === me.personId;
+    const dmUnread = self ? 0 : (rooms.find((r) => r.kind === "dm" && r.members.length === 2 && r.members.includes(p.id) && r.members.includes(me.personId))?.unread ?? 0);
     return (
       <button key={p.id} type="button" disabled={self} onClick={() => void openDm(p.id)}
         className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${self ? "cursor-default" : "hover:bg-raised"}`}>
@@ -174,6 +178,7 @@ function BuddyList({ onNew, onSettings }: { onNew: () => void; onSettings: () =>
             <span className="truncate text-sm text-ink">{p.name}{self ? " (you)" : ""}</span>
             <Dot id={p.id} />
             {presence[p.id]?.away ? <PostIt text={presence[p.id].away} /> : null}
+            {dmUnread > 0 ? <span className="ml-auto rounded-full bg-honey px-1.5 text-[11px] font-bold text-white">{dmUnread}</span> : null}
           </span>
           <span className="block truncate text-[11px] text-muted">
             {presence[p.id]?.state === "under_car" || presence[p.id]?.state === "with_client"
