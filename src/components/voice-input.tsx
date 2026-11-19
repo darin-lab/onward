@@ -47,6 +47,7 @@ export function VoiceInput() {
   const rec = useRef<Rec | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
   const listeningRef = useRef(false);
+  const prevPad = useRef("");
 
   useEffect(() => { setSupported(recognitionCtor() !== null); }, []);
 
@@ -56,13 +57,17 @@ export function VoiceInput() {
       const el = field.current;
       if (!el || !el.isConnected) return setPos(null);
       const r = el.getBoundingClientRect();
-      const top = r.top > 40 ? r.top - 36 : r.bottom + 4;
-      setPos({ top: Math.max(4, top), left: Math.max(4, Math.min(r.right - 36, window.innerWidth - 44)) });
+      const size = 24;
+      // Tucked inside the field's right edge: centered on one-line boxes, bottom corner on tall ones.
+      const top = r.height > 52 ? r.bottom - size - 6 : r.top + (r.height - size) / 2;
+      setPos({ top, left: Math.min(r.right - size - 6, window.innerWidth - size - 4) });
     };
     const onIn = (e: FocusEvent) => {
       if (!dictatable(e.target)) return;
       window.clearTimeout(hideTimer.current);
       if (field.current !== e.target && listeningRef.current) rec.current?.stop();
+      if (field.current && field.current !== e.target) field.current.style.paddingRight = prevPad.current;
+      if (field.current !== e.target) { prevPad.current = e.target.style.paddingRight; e.target.style.paddingRight = "34px"; }
       field.current = e.target;
       setNote("");
       place();
@@ -70,6 +75,7 @@ export function VoiceInput() {
     const onOut = () => {
       hideTimer.current = window.setTimeout(() => {
         if (listeningRef.current) return;
+        if (field.current) field.current.style.paddingRight = prevPad.current;
         field.current = null;
         setPos(null);
       }, 250);
@@ -120,13 +126,13 @@ export function VoiceInput() {
 
   if (!supported || !pos) return null;
   return (
-    <div style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 70 }} className="flex flex-col items-end gap-1">
+    <div style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 70 }} className="flex flex-row-reverse items-center gap-1">
       <button type="button" aria-label={listening ? "Stop dictation" : "Speak to type"} title={listening ? "Tap to stop" : "Speak to type"}
         onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={toggle}
-        className={`flex h-8 w-8 items-center justify-center rounded-full border text-base shadow ${listening ? "animate-pulse border-honey bg-honey text-white" : "border-white/25 bg-surface text-ink"}`}>
+        className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${listening ? "animate-pulse bg-honey text-white" : "bg-transparent text-muted opacity-60 hover:opacity-100"}`}>
         🎤
       </button>
-      {note ? <span className="rounded-sm bg-surface px-2 py-1 text-[11px] text-ink shadow">{note}</span> : null}
+      {note ? <span className="whitespace-nowrap rounded-sm bg-surface px-2 py-1 text-[11px] text-ink shadow">{note}</span> : null}
     </div>
   );
 }
