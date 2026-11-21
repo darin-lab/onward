@@ -5,7 +5,7 @@ import { HabitChart, HoursChart } from "@/components/board/charts";
 import { CompanyPoll } from "@/components/board/poll";
 import { Button, Card, TrophyMark, fieldClass } from "@/components/board/ui";
 import { getHallOfFame } from "@/lib/board/hof.functions";
-import type { RecordMetric, ShopRecord } from "@/lib/board/hof";
+import { metricInfo, type RecordMetric, type ShopRecord } from "@/lib/board/hof";
 import { cn } from "@/lib/cn";
 import { storeWeek } from "@/lib/board/shared";
 import { markReviewSeen } from "@/lib/board/board.functions";
@@ -577,6 +577,17 @@ function ManagerWeek({
         ),
     );
   };
+  // The shop's own best week for each number, in gold under the goal.
+  const shopName = useBoard((state) => state.shops.find((shop) => shop.id === shopOfWeek)?.name);
+  const recordLine = (fieldId: string) => {
+    const metric = RECORD_FOR[fieldId];
+    const record = metric
+      ? shopRecords.find((item) => item.shopId === shopOfWeek && item.metric === metric)
+      : undefined;
+    if (!record || !shopName) return null;
+    const value = record.metric === "hpro" ? record.value.toFixed(1) : metricInfo(record.metric).format(record.value);
+    return `${shopName} record ${value}`;
+  };
   const ranked = [
     ranks.totalSales,
     ranks.sellThrough,
@@ -614,8 +625,8 @@ function ManagerWeek({
       max: 100,
       rank: ranks.sellThrough,
       text: shown.sellThrough == null ? "—" : `${formatHours(shown.sellThrough)}%`,
-      goal: "Goal 25–30%",
-      met: (n) => n >= 25 && n <= 30,
+      goal: "Goal >25%",
+      met: (n) => n >= 25,
     },
     {
       id: "average-ro",
@@ -678,7 +689,12 @@ function ManagerWeek({
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-sm text-muted">{sales.label}</p>
-            {sales.goal ? <p className="shrink-0 text-xs text-muted">{sales.goal}</p> : null}
+            {sales.goal ? (
+              <div className="shrink-0 text-right text-xs">
+                <p className="text-muted">{sales.goal}</p>
+                {recordLine(sales.id) ? <p className="text-[#e2b33c]">{recordLine(sales.id)}</p> : null}
+              </div>
+            ) : null}
           </div>
           <p
             className="mt-1 font-display text-3xl font-semibold tabular-nums"
@@ -695,7 +711,12 @@ function ManagerWeek({
           <li key={field.id}>
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-sm text-muted">{field.label}</p>
-              {field.goal ? <p className="shrink-0 text-xs text-muted">{field.goal}</p> : null}
+              {field.goal ? (
+                <div className="shrink-0 text-right text-xs">
+                  <p className="text-muted">{field.goal}</p>
+                  {recordLine(field.id) ? <p className="text-[#e2b33c]">{recordLine(field.id)}</p> : null}
+                </div>
+              ) : null}
             </div>
             {writing && field.edit ? (
               <DecimalField
