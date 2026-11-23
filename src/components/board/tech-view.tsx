@@ -578,15 +578,14 @@ function ManagerWeek({
     );
   };
   // The shop's own best week for each number, in gold under the goal.
-  const shopName = useBoard((state) => state.shops.find((shop) => shop.id === shopOfWeek)?.name);
   const recordLine = (fieldId: string) => {
     const metric = RECORD_FOR[fieldId];
     const record = metric
       ? shopRecords.find((item) => item.shopId === shopOfWeek && item.metric === metric)
       : undefined;
-    if (!record || !shopName) return null;
+    if (!record) return null;
     const value = record.metric === "hpro" ? record.value.toFixed(1) : metricInfo(record.metric).format(record.value);
-    return `${shopName} record ${value}`;
+    return `Shop Record ${value}`;
   };
   const ranked = [
     ranks.totalSales,
