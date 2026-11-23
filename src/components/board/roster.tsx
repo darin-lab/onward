@@ -361,6 +361,19 @@ export function ToolsMenu() {
             <span aria-hidden="true" className="text-xs text-muted">↗</span>
           </a>
           )}
+          {technician ? null : (
+          <a
+            href="https://shoploaner.com/Authenticated/DefaultV3.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-end gap-1.5 rounded px-2 py-2 text-ink"
+            style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontWeight: 500, fontSize: "15px" }}
+          >
+            ShopLoaner
+            <span aria-hidden="true" className="text-xs text-muted">↗</span>
+          </a>
+          )}
         </div>
       ) : null}
       {feedback && person ? (
