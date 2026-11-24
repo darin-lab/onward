@@ -5,7 +5,7 @@ export type DayGoal = { label: string; low: number; high?: number };
 
 const GOALS: Partial<Record<DayFieldKey, DayGoal>> = {
   productivity: { label: "85% – 90%", low: 85 },
-  efficiency: { label: "100% – 150%", low: 100, high: 150 },
+  efficiency: { label: "100% – 150%", low: 100 },
   proficiency: { label: "100%", low: 100 },
   elr: { label: "$250.00", low: 250 },
   spbh: { label: "$400.00", low: 400 },
@@ -33,8 +33,8 @@ export function belowGoal(key: DayFieldKey, raw: string | undefined, shopId: str
   const goal = goalFor(key, shopId);
   const value = readNumber(raw);
   if (!goal || value == null) return false;
-  if (value < goal.low) return true;
-  return goal.high != null && value > goal.high;
+  // Anything at or above the goal is green, even past the top of a range like 100–150%.
+  return value < goal.low;
 }
 
 /** "above" (green), "below" (red), or null when the number has no goal or is blank. */
