@@ -372,6 +372,24 @@ export function DayReportForm({ shopId }: { shopId: string }) {
             Come back after 5 so the report has the whole day's numbers.
           </p>
         </Card>
+        <Card className="mt-4">
+          <p className="font-display text-xl text-ink">Missed a day?</p>
+          <p className="mt-1 text-sm text-muted">An earlier day's report is open any time. Pick the day to finish it.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="text-sm text-muted" htmlFor="missed-date">
+              Date
+            </label>
+            <input
+              id="missed-date"
+              type="date"
+              max={format(addDays(parseISO(todayISO()), -1), "yyyy-MM-dd")}
+              onChange={(event) => {
+                if (event.target.value) setDate(event.target.value);
+              }}
+              className={cn(fieldClass, "min-h-11 w-44 px-2")}
+            />
+          </div>
+        </Card>
       </div>
     );
   }

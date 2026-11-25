@@ -798,7 +798,7 @@ function CategoryEditor() {
   );
 }
 
-/** Grey until 5 PM. Hovering or clicking early says when it opens. */
+/** Grey until 5 PM (today opens then); earlier missed days can be opened any time. */
 function EndOfDayButton({ shopId }: { shopId: string }) {
   // Darin and Arun can preview End of Day at any time.
   const owner = isOwnerViewer(useBoard((state) => state.viewer));
@@ -823,26 +823,26 @@ function EndOfDayButton({ shopId }: { shopId: string }) {
       </Link>
     );
   }
+  // Before 5 PM it stays grey for today, but still opens: a missed earlier day can be finished any time.
   return (
     <span className="relative inline-block">
-      <button
-        type="button"
-        aria-disabled="true"
+      <Link
+        to="/day/$shopId"
+        params={{ shopId }}
         onMouseEnter={() => setHint(true)}
         onMouseLeave={() => setHint(false)}
         onFocus={() => setHint(true)}
         onBlur={() => setHint(false)}
-        onClick={() => setHint(true)}
-        className={cn(look, "cursor-not-allowed bg-zinc-700 text-zinc-400")}
+        className={cn(look, "bg-zinc-700 text-zinc-300")}
       >
         End of Day Report
-      </button>
+      </Link>
       {hint ? (
         <span
           role="status"
           className="absolute top-full left-0 z-20 mt-2 rounded-md bg-surface px-3 py-2 text-sm whitespace-nowrap text-ink shadow-border"
         >
-          {END_OF_DAY_WAIT}
+          {END_OF_DAY_WAIT} Earlier days open now.
         </span>
       ) : null}
     </span>
